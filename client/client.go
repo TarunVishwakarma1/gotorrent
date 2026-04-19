@@ -5,7 +5,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/tarunvishwakarma1/gotorret/bitfield"
 	"github.com/tarunvishwakarma1/gotorret/handshake"
+	message "github.com/tarunvishwakarma1/gotorret/messages"
 	"github.com/tarunvishwakarma1/gotorret/peers"
 )
 
@@ -14,6 +16,8 @@ type Client struct {
 	InfoHash [20]byte
 	PeerID   [20]byte
 	Peer     peers.Peer
+	Choked   bool
+	Bitfield bitfield.Bitfield
 }
 
 func New(peer peers.Peer, infoHash [20]byte, peerID [20]byte) (*Client, error) {
@@ -45,6 +49,16 @@ func New(peer peers.Peer, infoHash [20]byte, peerID [20]byte) (*Client, error) {
 		return nil, fmt.Errorf("infohash mismatch: %w", err)
 	}
 
+	msg, err := message.Read(conn)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to read bitfield: %w", err)
+	}
+	if msg.ID != message.MsgBitfield {
+		conn.Close()
+		return nil, fmt.Errorf("expected bitfield got ID %d", msg.ID)
+	}
+
 	fmt.Println("Protocol:", theirHs.Pstr)
 	fmt.Printf("Reserved: %08b\n", theirHs.Reserved)
 	fmt.Printf("InfoHash: %x\n", theirHs.InfoHash)
@@ -55,5 +69,7 @@ func New(peer peers.Peer, infoHash [20]byte, peerID [20]byte) (*Client, error) {
 		InfoHash: infoHash,
 		PeerID:   peerID,
 		Peer:     peer,
+		Choked:   true,                           // ← choked by default
+		Bitfield: bitfield.Bitfield(msg.Payload), // ← store their bitfield
 	}, nil
 }
