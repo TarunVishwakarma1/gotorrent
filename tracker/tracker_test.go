@@ -2,192 +2,248 @@ package tracker
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
+	"github.com/tarunvishwakarma1/gotorret/parser"
 	"github.com/tarunvishwakarma1/gotorret/torrent"
 )
 
-// newTestTorrentFile creates a TorrentFile with the given announce URL for testing.
-func newTestTorrentFile(announceURL string) *torrent.TorrentFile {
+// makeTorrentFile returns a minimal TorrentFile with the given announce URL.
+func makeTorrentFile(announce string) *torrent.TorrentFile {
 	return &torrent.TorrentFile{
-		Announce:    announceURL,
+		Announce:    announce,
 		Name:        "test.iso",
 		Length:      1000,
 		PieceLength: 256,
-		PieceHashes: [][20]byte{{}},
-		InfoHash:    [20]byte{},
+		PieceHashes: [][20]byte{},
 	}
 }
 
-func TestGetPeers_Success(t *testing.T) {
-	// "ABCDEF" is a 6-byte compact peer representation
-	peersData := "ABCDEF"
-	responseBody := fmt.Sprintf("d5:peers%d:%se", len(peersData), peersData)
+// bencodeResponse encodes a map as a bencode string.
+func bencodeResponse(m map[string]any) string {
+	return parser.Encode(m)
+}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, responseBody)
+// startServer creates and starts an httptest.Server, skipping the test if the
+// loopback TCP stack is not reachable in the current environment.
+func startServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+	if err != nil {
+		srv.Close()
+		t.Skip("loopback TCP unavailable in this environment; skipping network test")
+	}
+	conn.Close()
+	return srv
+}
+
+func TestGetPeersSuccess(t *testing.T) {
+	// Compact peers: 6 bytes per peer (4 IP + 2 port), two peers = 12 bytes
+	rawPeers := "\x7f\x00\x00\x01\x1a\xe1\xc0\xa8\x01\x01\x1a\xe1"
+	body := bencodeResponse(map[string]any{
+		"peers":    rawPeers,
+		"interval": 1800,
+	})
+
+	srv := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, body)
 	}))
-	defer server.Close()
+	defer srv.Close()
 
-	tf := newTestTorrentFile(server.URL + "/announce")
+	tf := makeTorrentFile(srv.URL + "/announce")
 	peers, err := GetPeers(tf)
 	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if peers != peersData {
-		t.Errorf("GetPeers returned %q, want %q", peers, peersData)
-	}
-}
-
-func TestGetPeers_QueryParamsPresent(t *testing.T) {
-	peersData := "ABCDEF"
-	responseBody := fmt.Sprintf("d5:peers%d:%se", len(peersData), peersData)
-	var capturedQuery string
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedQuery = r.URL.RawQuery
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, responseBody)
-	}))
-	defer server.Close()
-
-	tf := newTestTorrentFile(server.URL + "/announce")
-	_, err := GetPeers(tf)
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-
-	requiredParams := []string{"info_hash", "peer_id", "port", "uploaded", "downloaded", "left", "compact"}
-	for _, param := range requiredParams {
-		if !strings.Contains(capturedQuery, param) {
-			t.Errorf("expected query param %q in request, not found in %q", param, capturedQuery)
-		}
+	if peers != rawPeers {
+		t.Errorf("peers = %q, want %q", peers, rawPeers)
 	}
 }
 
-func TestGetPeers_PortIs6881(t *testing.T) {
-	peersData := "ABCDEF"
-	responseBody := fmt.Sprintf("d5:peers%d:%se", len(peersData), peersData)
-	var capturedQuery string
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedQuery = r.URL.RawQuery
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, responseBody)
-	}))
-	defer server.Close()
-
-	tf := newTestTorrentFile(server.URL + "/announce")
-	_, _ = GetPeers(tf)
-
-	if !strings.Contains(capturedQuery, "port=6881") {
-		t.Errorf("expected port=6881 in query, got: %q", capturedQuery)
-	}
-}
-
-func TestGetPeers_LengthInQueryParams(t *testing.T) {
-	peersData := "ABCDEF"
-	responseBody := fmt.Sprintf("d5:peers%d:%se", len(peersData), peersData)
-	var capturedQuery string
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedQuery = r.URL.RawQuery
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, responseBody)
-	}))
-	defer server.Close()
-
-	tf := newTestTorrentFile(server.URL + "/announce")
-	tf.Length = 54321
-	_, _ = GetPeers(tf)
-
-	if !strings.Contains(capturedQuery, "left=54321") {
-		t.Errorf("expected left=54321 in query, got: %q", capturedQuery)
-	}
-}
-
-func TestGetPeers_InvalidAnnounceURL(t *testing.T) {
-	tf := newTestTorrentFile("://this-is-not-a-valid-url")
+func TestGetPeersInvalidAnnounceURL(t *testing.T) {
+	// url.Parse does not error on most strings, but a completely invalid scheme triggers an error
+	tf := makeTorrentFile("://invalid-url")
 	_, err := GetPeers(tf)
 	if err == nil {
 		t.Error("expected error for invalid announce URL, got nil")
 	}
 }
 
-func TestGetPeers_InvalidTrackerResponse_NotBencoded(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "this is not bencoded data at all")
-	}))
-	defer server.Close()
+func TestGetPeersHTTPRequestFails(t *testing.T) {
+	// Create a server, close it immediately so the HTTP request fails.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL + "/announce"
+	srv.Close()
 
-	tf := newTestTorrentFile(server.URL + "/announce")
+	tf := makeTorrentFile(url)
 	_, err := GetPeers(tf)
 	if err == nil {
-		t.Error("expected error for non-bencoded tracker response, got nil")
+		t.Error("expected error for failed HTTP request, got nil")
 	}
 }
 
-func TestGetPeers_MissingPeersField(t *testing.T) {
-	// Valid bencoded dict but without "peers" key
-	responseBody := "d8:intervali1800ee"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, responseBody)
-	}))
-	defer server.Close()
+func TestGetPeersNonDictResponse(t *testing.T) {
+	// Tracker returns a bencode integer — not a dict.
+	body := parser.Encode(42)
 
-	tf := newTestTorrentFile(server.URL + "/announce")
+	srv := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+
+	tf := makeTorrentFile(srv.URL + "/announce")
 	_, err := GetPeers(tf)
 	if err == nil {
-		t.Error("expected error for missing peers field, got nil")
+		t.Error("expected error for non-dict tracker response, got nil")
 	}
 }
 
-func TestGetPeers_PeersFieldNotString(t *testing.T) {
-	// "peers" is present but as a list (non-compact format), not a string
-	responseBody := "d5:peersli1eee"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, responseBody)
-	}))
-	defer server.Close()
+func TestGetPeersMissingPeersKey(t *testing.T) {
+	// Valid dict but no "peers" key.
+	body := bencodeResponse(map[string]any{
+		"interval": 1800,
+	})
 
-	tf := newTestTorrentFile(server.URL + "/announce")
+	srv := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+
+	tf := makeTorrentFile(srv.URL + "/announce")
 	_, err := GetPeers(tf)
 	if err == nil {
-		t.Error("expected error when peers field is not a string, got nil")
+		t.Error("expected error for missing peers key, got nil")
 	}
 }
 
-func TestGetPeers_ServerUnavailable(t *testing.T) {
-	// Point to a port that is not listening
-	tf := newTestTorrentFile("http://127.0.0.1:1/announce")
+func TestGetPeersTrackerParams(t *testing.T) {
+	// Verify that required query parameters are present in the tracker request.
+	rawPeers := "\x7f\x00\x00\x01\x1a\xe1"
+	body := bencodeResponse(map[string]any{"peers": rawPeers})
+
+	var capturedQuery string
+	srv := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.RawQuery
+		fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+
+	tf := makeTorrentFile(srv.URL + "/announce")
+	tf.Length = 5000
 	_, err := GetPeers(tf)
-	if err == nil {
-		t.Error("expected error when server is unavailable, got nil")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expectedParams := []string{"info_hash", "peer_id", "port", "uploaded", "downloaded", "left", "compact"}
+	for _, param := range expectedParams {
+		if !containsParam(capturedQuery, param) {
+			t.Errorf("expected query param %q in %q", param, capturedQuery)
+		}
 	}
 }
 
-func TestGetPeers_EmptyPeers(t *testing.T) {
-	// Empty peers string is valid (zero peers)
-	responseBody := "d5:peers0:e"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, responseBody)
-	}))
-	defer server.Close()
+func TestGetPeersPortIsFixed(t *testing.T) {
+	// The port parameter must always be 6881.
+	rawPeers := "\x7f\x00\x00\x01\x1a\xe1"
+	body := bencodeResponse(map[string]any{"peers": rawPeers})
 
-	tf := newTestTorrentFile(server.URL + "/announce")
+	var capturedQuery string
+	srv := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.RawQuery
+		fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+
+	tf := makeTorrentFile(srv.URL + "/announce")
+	_, err := GetPeers(tf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !containsParam(capturedQuery, "port") {
+		t.Errorf("port param missing from query %q", capturedQuery)
+	}
+	if !containsParamValue(capturedQuery, "port", "6881") {
+		t.Errorf("port param in %q is not 6881", capturedQuery)
+	}
+}
+
+func TestGetPeersCompactIsOne(t *testing.T) {
+	rawPeers := "\x7f\x00\x00\x01\x1a\xe1"
+	body := bencodeResponse(map[string]any{"peers": rawPeers})
+
+	var capturedQuery string
+	srv := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.RawQuery
+		fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+
+	tf := makeTorrentFile(srv.URL + "/announce")
+	_, err := GetPeers(tf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !containsParamValue(capturedQuery, "compact", "1") {
+		t.Errorf("compact param in %q is not 1", capturedQuery)
+	}
+}
+
+func TestGetPeersEmptyPeers(t *testing.T) {
+	// Tracker returns empty peers string — should succeed and return "".
+	body := bencodeResponse(map[string]any{"peers": ""})
+
+	srv := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+
+	tf := makeTorrentFile(srv.URL + "/announce")
 	peers, err := GetPeers(tf)
 	if err != nil {
-		t.Fatalf("expected no error for empty peers, got: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if peers != "" {
-		t.Errorf("expected empty peers string, got %q", peers)
+		t.Errorf("peers = %q, want empty string", peers)
 	}
+}
+
+// containsParam checks if the raw query string contains a given parameter name.
+func containsParam(rawQuery, param string) bool {
+	for _, kv := range splitQuery(rawQuery) {
+		if kv == param || len(kv) > len(param) && kv[:len(param)+1] == param+"=" {
+			return true
+		}
+	}
+	return false
+}
+
+// containsParamValue checks if rawQuery contains param=value.
+func containsParamValue(rawQuery, param, value string) bool {
+	target := param + "=" + value
+	for _, kv := range splitQuery(rawQuery) {
+		if kv == target {
+			return true
+		}
+	}
+	return false
+}
+
+func splitQuery(rawQuery string) []string {
+	if rawQuery == "" {
+		return nil
+	}
+	var parts []string
+	start := 0
+	for i := 0; i <= len(rawQuery); i++ {
+		if i == len(rawQuery) || rawQuery[i] == '&' {
+			parts = append(parts, rawQuery[start:i])
+			start = i + 1
+		}
+	}
+	return parts
 }

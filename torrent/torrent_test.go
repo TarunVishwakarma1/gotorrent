@@ -8,157 +8,248 @@ import (
 	"github.com/tarunvishwakarma1/gotorret/parser"
 )
 
-// validBencode returns a well-formed bencoded torrent string for testing.
-// The info dict keys in sorted order: length, name, "piece length", pieces.
-func validBencode() string {
-	return "d8:announce35:http://tracker.example.com/announce4:infod6:lengthi1000e4:name8:test.iso12:piece lengthi256e6:pieces20:AAAAAAAAAAAAAAAAAAAAee"
+// buildTorrentBencode constructs a valid bencode torrent string from parts.
+// pieces must be a multiple of 20 bytes.
+func buildTorrentBencode(announce, name string, length, pieceLength int, pieces string) string {
+	info := map[string]any{
+		"length":       length,
+		"name":         name,
+		"piece length": pieceLength,
+		"pieces":       pieces,
+	}
+	top := map[string]any{
+		"announce": announce,
+		"info":     info,
+	}
+	return parser.Encode(top)
 }
 
-func TestNewTorrentFile_Valid(t *testing.T) {
-	tf, err := NewTorrentFile(validBencode())
+// computeExpectedInfoHash returns the sha1 of the encoded info dict.
+func computeExpectedInfoHash(name string, length, pieceLength int, pieces string) [20]byte {
+	info := map[string]any{
+		"length":       length,
+		"name":         name,
+		"piece length": pieceLength,
+		"pieces":       pieces,
+	}
+	return sha1.Sum([]byte(parser.Encode(info)))
+}
+
+const (
+	testAnnounce    = "http://example.com/announce"
+	testName        = "test.iso"
+	testLength      = 1000
+	testPieceLength = 256
+	// 20 bytes of 'A' — exactly one piece hash
+	testPieces20 = "AAAAAAAAAAAAAAAAAAAA"
+	// 40 bytes — two piece hashes
+	testPieces40 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+)
+
+func TestNewTorrentFileValid(t *testing.T) {
+	tstr := buildTorrentBencode(testAnnounce, testName, testLength, testPieceLength, testPieces20)
+	tf, err := NewTorrentFile(tstr)
 	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if tf.Announce != "http://tracker.example.com/announce" {
-		t.Errorf("Announce = %q, want %q", tf.Announce, "http://tracker.example.com/announce")
+
+	if tf.Announce != testAnnounce {
+		t.Errorf("Announce = %q, want %q", tf.Announce, testAnnounce)
 	}
-	if tf.Name != "test.iso" {
-		t.Errorf("Name = %q, want %q", tf.Name, "test.iso")
+	if tf.Name != testName {
+		t.Errorf("Name = %q, want %q", tf.Name, testName)
 	}
-	if tf.Length != 1000 {
-		t.Errorf("Length = %d, want 1000", tf.Length)
+	if tf.Length != testLength {
+		t.Errorf("Length = %d, want %d", tf.Length, testLength)
 	}
-	if tf.PieceLength != 256 {
-		t.Errorf("PieceLength = %d, want 256", tf.PieceLength)
+	if tf.PieceLength != testPieceLength {
+		t.Errorf("PieceLength = %d, want %d", tf.PieceLength, testPieceLength)
 	}
 }
 
-func TestNewTorrentFile_PieceHashes_SinglePiece(t *testing.T) {
-	tf, err := NewTorrentFile(validBencode())
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if len(tf.PieceHashes) != 1 {
-		t.Fatalf("expected 1 piece hash, got %d", len(tf.PieceHashes))
-	}
-	// All 'A' bytes
-	for i, b := range tf.PieceHashes[0] {
-		if b != 'A' {
-			t.Errorf("PieceHashes[0][%d] = %d, want %d ('A')", i, b, 'A')
+func TestNewTorrentFilePieceHashesCount(t *testing.T) {
+	t.Run("one piece", func(t *testing.T) {
+		tstr := buildTorrentBencode(testAnnounce, testName, testLength, testPieceLength, testPieces20)
+		tf, err := NewTorrentFile(tstr)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-	}
-}
-
-func TestNewTorrentFile_PieceHashes_MultiplePieces(t *testing.T) {
-	// 40 bytes = 2 pieces: first all 'A', second all 'B'
-	pieces := strings.Repeat("A", 20) + strings.Repeat("B", 20)
-	// Rebuild bencode with 40-char pieces
-	input := "d8:announce35:http://tracker.example.com/announce4:infod6:lengthi2000e4:name8:test.iso12:piece lengthi256e6:pieces40:" + pieces + "ee"
-	tf, err := NewTorrentFile(input)
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if len(tf.PieceHashes) != 2 {
-		t.Fatalf("expected 2 piece hashes, got %d", len(tf.PieceHashes))
-	}
-	for i := 0; i < 20; i++ {
-		if tf.PieceHashes[0][i] != 'A' {
-			t.Errorf("PieceHashes[0][%d] = %d, want 'A'", i, tf.PieceHashes[0][i])
+		if len(tf.PieceHashes) != 1 {
+			t.Errorf("PieceHashes len = %d, want 1", len(tf.PieceHashes))
 		}
-		if tf.PieceHashes[1][i] != 'B' {
-			t.Errorf("PieceHashes[1][%d] = %d, want 'B'", i, tf.PieceHashes[1][i])
+	})
+
+	t.Run("two pieces", func(t *testing.T) {
+		pieces40 := strings.Repeat("A", 40)
+		tstr := buildTorrentBencode(testAnnounce, testName, testLength, testPieceLength, pieces40)
+		tf, err := NewTorrentFile(tstr)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-	}
+		if len(tf.PieceHashes) != 2 {
+			t.Errorf("PieceHashes len = %d, want 2", len(tf.PieceHashes))
+		}
+	})
+
+	t.Run("five pieces", func(t *testing.T) {
+		pieces100 := strings.Repeat("B", 100)
+		tstr := buildTorrentBencode(testAnnounce, testName, testLength, testPieceLength, pieces100)
+		tf, err := NewTorrentFile(tstr)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(tf.PieceHashes) != 5 {
+			t.Errorf("PieceHashes len = %d, want 5", len(tf.PieceHashes))
+		}
+	})
 }
 
-func TestNewTorrentFile_InfoHash(t *testing.T) {
-	tf, err := NewTorrentFile(validBencode())
+func TestNewTorrentFilePieceHashContent(t *testing.T) {
+	// First 20 bytes should match the first piece in the pieces string.
+	pieces := strings.Repeat("X", 20) + strings.Repeat("Y", 20)
+	tstr := buildTorrentBencode(testAnnounce, testName, testLength, testPieceLength, pieces)
+	tf, err := NewTorrentFile(tstr)
 	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	// Compute expected info hash manually
-	infoDict := map[string]any{
-		"length":       1000,
-		"name":         "test.iso",
-		"piece length": 256,
-		"pieces":       strings.Repeat("A", 20),
-	}
-	rawInfo := parser.Encode(infoDict)
-	expected := sha1.Sum([]byte(rawInfo))
+	var wantFirst [20]byte
+	copy(wantFirst[:], strings.Repeat("X", 20))
+	var wantSecond [20]byte
+	copy(wantSecond[:], strings.Repeat("Y", 20))
 
-	if tf.InfoHash != expected {
-		t.Errorf("InfoHash = %x, want %x", tf.InfoHash, expected)
+	if tf.PieceHashes[0] != wantFirst {
+		t.Errorf("PieceHashes[0] = %v, want %v", tf.PieceHashes[0], wantFirst)
+	}
+	if tf.PieceHashes[1] != wantSecond {
+		t.Errorf("PieceHashes[1] = %v, want %v", tf.PieceHashes[1], wantSecond)
 	}
 }
 
-func TestNewTorrentFile_MissingInfo(t *testing.T) {
-	// Dict without "info" key
-	input := "d8:announce35:http://tracker.example.com/announcee"
-	_, err := NewTorrentFile(input)
+func TestNewTorrentFileInfoHash(t *testing.T) {
+	tstr := buildTorrentBencode(testAnnounce, testName, testLength, testPieceLength, testPieces20)
+	tf, err := NewTorrentFile(tstr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := computeExpectedInfoHash(testName, testLength, testPieceLength, testPieces20)
+	if tf.InfoHash != want {
+		t.Errorf("InfoHash = %x, want %x", tf.InfoHash, want)
+	}
+}
+
+func TestNewTorrentFileMissingInfo(t *testing.T) {
+	// Torrent with no info key
+	tstr := parser.Encode(map[string]any{
+		"announce": testAnnounce,
+	})
+	_, err := NewTorrentFile(tstr)
 	if err == nil {
-		t.Error("expected error for missing info dict, got nil")
+		t.Error("expected error for missing info, got nil")
 	}
 }
 
-func TestNewTorrentFile_MissingAnnounce(t *testing.T) {
-	// Dict without "announce" key
-	input := "d4:infod6:lengthi1000e4:name8:test.iso12:piece lengthi256e6:pieces20:AAAAAAAAAAAAAAAAAAAAee"
-	_, err := NewTorrentFile(input)
+func TestNewTorrentFileMissingAnnounce(t *testing.T) {
+	tstr := parser.Encode(map[string]any{
+		"info": map[string]any{
+			"length":       testLength,
+			"name":         testName,
+			"piece length": testPieceLength,
+			"pieces":       testPieces20,
+		},
+	})
+	_, err := NewTorrentFile(tstr)
 	if err == nil {
 		t.Error("expected error for missing announce, got nil")
 	}
 }
 
-func TestNewTorrentFile_MissingName(t *testing.T) {
-	input := "d8:announce35:http://tracker.example.com/announce4:infod6:lengthi1000e12:piece lengthi256e6:pieces20:AAAAAAAAAAAAAAAAAAAAee"
-	_, err := NewTorrentFile(input)
+func TestNewTorrentFileMissingName(t *testing.T) {
+	tstr := parser.Encode(map[string]any{
+		"announce": testAnnounce,
+		"info": map[string]any{
+			"length":       testLength,
+			"piece length": testPieceLength,
+			"pieces":       testPieces20,
+		},
+	})
+	_, err := NewTorrentFile(tstr)
 	if err == nil {
 		t.Error("expected error for missing name, got nil")
 	}
 }
 
-func TestNewTorrentFile_MissingLength(t *testing.T) {
-	input := "d8:announce35:http://tracker.example.com/announce4:infod4:name8:test.iso12:piece lengthi256e6:pieces20:AAAAAAAAAAAAAAAAAAAAee"
-	_, err := NewTorrentFile(input)
+func TestNewTorrentFileMissingLength(t *testing.T) {
+	tstr := parser.Encode(map[string]any{
+		"announce": testAnnounce,
+		"info": map[string]any{
+			"name":         testName,
+			"piece length": testPieceLength,
+			"pieces":       testPieces20,
+		},
+	})
+	_, err := NewTorrentFile(tstr)
 	if err == nil {
 		t.Error("expected error for missing length, got nil")
 	}
 }
 
-func TestNewTorrentFile_MissingPieceLength(t *testing.T) {
-	input := "d8:announce35:http://tracker.example.com/announce4:infod6:lengthi1000e4:name8:test.iso6:pieces20:AAAAAAAAAAAAAAAAAAAAee"
-	_, err := NewTorrentFile(input)
+func TestNewTorrentFileMissingPieceLength(t *testing.T) {
+	tstr := parser.Encode(map[string]any{
+		"announce": testAnnounce,
+		"info": map[string]any{
+			"length":  testLength,
+			"name":    testName,
+			"pieces":  testPieces20,
+		},
+	})
+	_, err := NewTorrentFile(tstr)
 	if err == nil {
 		t.Error("expected error for missing piece length, got nil")
 	}
 }
 
-func TestNewTorrentFile_MissingPieces(t *testing.T) {
-	input := "d8:announce35:http://tracker.example.com/announce4:infod6:lengthi1000e4:name8:test.iso12:piece lengthi256eee"
-	_, err := NewTorrentFile(input)
+func TestNewTorrentFileMissingPieces(t *testing.T) {
+	tstr := parser.Encode(map[string]any{
+		"announce": testAnnounce,
+		"info": map[string]any{
+			"length":       testLength,
+			"name":         testName,
+			"piece length": testPieceLength,
+		},
+	})
+	_, err := NewTorrentFile(tstr)
 	if err == nil {
 		t.Error("expected error for missing pieces, got nil")
 	}
 }
 
-func TestNewTorrentFile_InvalidPiecesLength(t *testing.T) {
-	// 21 bytes is not a multiple of 20
-	pieces := strings.Repeat("A", 21)
-	input := "d8:announce35:http://tracker.example.com/announce4:infod6:lengthi1000e4:name8:test.iso12:piece lengthi256e6:pieces21:" + pieces + "ee"
-	_, err := NewTorrentFile(input)
+func TestNewTorrentFilePiecesNotMultipleOf20(t *testing.T) {
+	// 19-byte pieces string is not a multiple of 20
+	badPieces := strings.Repeat("A", 19)
+	tstr := buildTorrentBencode(testAnnounce, testName, testLength, testPieceLength, badPieces)
+	_, err := NewTorrentFile(tstr)
 	if err == nil {
-		t.Error("expected error for invalid pieces length, got nil")
+		t.Error("expected error for pieces not multiple of 20, got nil")
 	}
 }
 
-func TestNewTorrentFile_ZeroPieces(t *testing.T) {
-	// Zero-length pieces string is valid (0 % 20 == 0), resulting in zero piece hashes
-	input := "d8:announce35:http://tracker.example.com/announce4:infod6:lengthi0e4:name8:test.iso12:piece lengthi256e6:pieces0:ee"
-	tf, err := NewTorrentFile(input)
+func TestNewTorrentFilePiecesLengthOneByte(t *testing.T) {
+	// 1-byte pieces string — not a multiple of 20 — should error
+	tstr := buildTorrentBencode(testAnnounce, testName, testLength, testPieceLength, "A")
+	_, err := NewTorrentFile(tstr)
+	if err == nil {
+		t.Error("expected error for 1-byte pieces, got nil")
+	}
+}
+
+func TestNewTorrentFileZeroPieces(t *testing.T) {
+	// Empty pieces string is technically 0 % 20 == 0, so it should succeed with 0 hashes.
+	tstr := buildTorrentBencode(testAnnounce, testName, testLength, testPieceLength, "")
+	tf, err := NewTorrentFile(tstr)
 	if err != nil {
-		t.Fatalf("expected no error for zero pieces, got: %v", err)
+		t.Fatalf("unexpected error for empty pieces: %v", err)
 	}
 	if len(tf.PieceHashes) != 0 {
-		t.Errorf("expected 0 piece hashes, got %d", len(tf.PieceHashes))
+		t.Errorf("PieceHashes len = %d, want 0", len(tf.PieceHashes))
 	}
 }
