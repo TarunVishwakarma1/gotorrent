@@ -26,7 +26,7 @@ func GetPeers(tf *torrent.TorrentFile) (string, error) {
 	params := url.Values{
 		"info_hash":  []string{string(tf.InfoHash[:])},
 		"peer_id":    []string{string(peerId[:])},
-		"port":       []string{"6881"},
+		"port":       []string{strconv.Itoa(int(tf.Port))},
 		"uploaded":   []string{"0"},
 		"downloaded": []string{"0"},
 		"left":       []string{strconv.Itoa(tf.Length)},

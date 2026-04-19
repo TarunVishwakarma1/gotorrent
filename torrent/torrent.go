@@ -14,6 +14,7 @@ type TorrentFile struct {
 	PieceLength int
 	PieceHashes [][20]byte
 	InfoHash    [20]byte
+	Port        uint16
 }
 
 func NewTorrentFile(tstr string) (*TorrentFile, error) {
@@ -71,5 +72,6 @@ func NewTorrentFile(tstr string) (*TorrentFile, error) {
 		PieceLength: pieceLength,
 		PieceHashes: pieceHashes,
 		InfoHash:    infoHash,
+		Port:        6881,
 	}, nil
 }
