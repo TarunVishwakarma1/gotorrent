@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tarunvishwakarma1/gotorret/parser"
+	"github.com/tarunvishwakarma1/gotorrent/parser"
 )
 
 // buildTorrentBencode constructs a valid bencode torrent string from parts.
@@ -197,9 +197,9 @@ func TestNewTorrentFileMissingPieceLength(t *testing.T) {
 	tstr := parser.Encode(map[string]any{
 		"announce": testAnnounce,
 		"info": map[string]any{
-			"length":  testLength,
-			"name":    testName,
-			"pieces":  testPieces20,
+			"length": testLength,
+			"name":   testName,
+			"pieces": testPieces20,
 		},
 	})
 	_, err := NewTorrentFile(tstr)

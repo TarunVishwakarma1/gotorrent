@@ -1,6 +1,10 @@
 package bitfield
 
-import "fmt"
+import (
+	"fmt"
+	"math/bits"
+	"strings"
+)
 
 // Bitfield represents which pieces a peer has
 // each bit represents one piece
@@ -36,30 +40,30 @@ func (bf Bitfield) SetPiece(index int) {
 	bf[byteIndex] |= 1 << (7 - offset)
 }
 
-// String prints the bitfield in a human readable way for debugging
+// String prints the bitfield in a human readable way for debugging.
 func (bf Bitfield) String() string {
-	var result string
+	var sb strings.Builder
+	sb.Grow(len(bf)*9) // 8 bits + 1 space per byte
 	for i := range len(bf) * 8 {
 		if bf.HasPiece(i) {
-			result += "1"
+			sb.WriteByte('1')
 		} else {
-			result += "0"
+			sb.WriteByte('0')
 		}
-		// add a space every 8 bits for readability
 		if (i+1)%8 == 0 {
-			result += " "
+			sb.WriteByte(' ')
 		}
 	}
-	return result
+	return sb.String()
 }
 
-// HowMany returns how many pieces the peer has
+// HowMany returns how many pieces the peer has.
+// Uses math/bits.OnesCount8 — maps to a single POPCNT hardware instruction
+// on x86/arm64, making this O(n/8) instead of O(n).
 func (bf Bitfield) HowMany() int {
 	count := 0
-	for i := range len(bf) * 8 {
-		if bf.HasPiece(i) {
-			count++
-		}
+	for _, b := range bf {
+		count += bits.OnesCount8(b)
 	}
 	return count
 }

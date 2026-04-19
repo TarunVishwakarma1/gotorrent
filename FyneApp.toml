@@ -1,0 +1,11 @@
+Website = "https://github.com/tarunvishwakarma1/gotorrent"
+
+[Details]
+Icon = "assets/icon.png"
+Name = "GoTorrent"
+ID = "com.gotorrent.app"
+Version = "1.0.0"
+Build = 1
+
+[Details.MacOS]
+Category = "public.app-category.utilities"

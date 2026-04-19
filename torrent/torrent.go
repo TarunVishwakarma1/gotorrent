@@ -5,9 +5,18 @@ import (
 	"crypto/sha1"
 	"fmt"
 
-	"github.com/tarunvishwakarma1/gotorret/parser"
+	"github.com/tarunvishwakarma1/gotorrent/parser"
 )
 
+// TorrentFileItem represents a single file within a multi-file torrent.
+type TorrentFileItem struct {
+	// Path is the relative path components for this file.
+	Path []string
+	// Length is the size of this file in bytes.
+	Length int64
+}
+
+// TorrentFile holds parsed metadata from a .torrent file.
 type TorrentFile struct {
 	Announce    string
 	Name        string
@@ -17,6 +26,10 @@ type TorrentFile struct {
 	InfoHash    [20]byte
 	Port        uint16
 	PeerID      [20]byte
+	// Files holds per-file metadata for multi-file torrents.
+	Files []TorrentFileItem
+	// IsMultiFile is true when the torrent contains multiple files.
+	IsMultiFile bool
 }
 
 func NewTorrentFile(tstr string) (*TorrentFile, error) {
@@ -37,9 +50,44 @@ func NewTorrentFile(tstr string) (*TorrentFile, error) {
 		return nil, fmt.Errorf("missing name")
 	}
 
-	length, ok := info["length"].(int)
-	if !ok {
-		return nil, fmt.Errorf("missing length")
+	// Detect single-file vs multi-file torrent.
+	var totalLength int
+	var files []TorrentFileItem
+	isMultiFile := false
+
+	if rawFiles, hasFiles := info["files"]; hasFiles {
+		// Multi-file torrent: info dict has "files" array instead of "length".
+		isMultiFile = true
+		fileList, ok := rawFiles.([]any)
+		if !ok {
+			return nil, fmt.Errorf("invalid files list in multi-file torrent")
+		}
+		for _, f := range fileList {
+			fmap, ok := f.(map[string]any)
+			if !ok {
+				continue
+			}
+			fileLen, _ := fmap["length"].(int)
+			rawPath, _ := fmap["path"].([]any)
+			pathParts := make([]string, 0, len(rawPath))
+			for _, p := range rawPath {
+				if s, ok := p.(string); ok {
+					pathParts = append(pathParts, s)
+				}
+			}
+			files = append(files, TorrentFileItem{
+				Path:   pathParts,
+				Length: int64(fileLen),
+			})
+			totalLength += fileLen
+		}
+	} else {
+		// Single-file torrent: info dict has "length".
+		length, ok := info["length"].(int)
+		if !ok {
+			return nil, fmt.Errorf("missing length")
+		}
+		totalLength = length
 	}
 
 	pieceLength, ok := info["piece length"].(int)
@@ -76,11 +124,13 @@ func NewTorrentFile(tstr string) (*TorrentFile, error) {
 	return &TorrentFile{
 		Announce:    announce,
 		Name:        name,
-		Length:      length,
+		Length:      totalLength,
 		PieceLength: pieceLength,
 		PieceHashes: pieceHashes,
 		InfoHash:    infoHash,
 		Port:        6881,
 		PeerID:      peerID,
+		Files:       files,
+		IsMultiFile: isMultiFile,
 	}, nil
 }

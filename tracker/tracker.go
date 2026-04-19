@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/tarunvishwakarma1/gotorret/parser"
-	"github.com/tarunvishwakarma1/gotorret/torrent"
+	"github.com/tarunvishwakarma1/gotorrent/parser"
+	"github.com/tarunvishwakarma1/gotorrent/torrent"
 )
 
 func GetPeers(tf *torrent.TorrentFile) (string, error) {

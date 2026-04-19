@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=GoTorrent
+Comment=A fast, lightweight BitTorrent client
+Exec=gotorrent %f
+Icon=gotorrent
+Type=Application
+MimeType=application/x-bittorrent;
+Categories=Network;FileTransfer;P2P;
+StartupNotify=true

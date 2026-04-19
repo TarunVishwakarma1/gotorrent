@@ -5,10 +5,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/tarunvishwakarma1/gotorret/bitfield"
-	"github.com/tarunvishwakarma1/gotorret/handshake"
-	message "github.com/tarunvishwakarma1/gotorret/messages"
-	"github.com/tarunvishwakarma1/gotorret/peers"
+	"github.com/tarunvishwakarma1/gotorrent/bitfield"
+	"github.com/tarunvishwakarma1/gotorrent/handshake"
+	message "github.com/tarunvishwakarma1/gotorrent/messages"
+	"github.com/tarunvishwakarma1/gotorrent/peers"
 )
 
 type Client struct {
@@ -49,10 +49,19 @@ func New(peer peers.Peer, infoHash [20]byte, peerID [20]byte) (*Client, error) {
 		return nil, fmt.Errorf("infohash mismatch: %w", err)
 	}
 
-	msg, err := message.Read(conn)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to read bitfield: %w", err)
+	// Read messages until we get a bitfield; skip keepalives (nil messages).
+	var msg *message.Message
+	for {
+		msg, err = message.Read(conn)
+		if err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("failed to read bitfield: %w", err)
+		}
+		if msg == nil {
+			// keepalive — try again
+			continue
+		}
+		break
 	}
 	if msg.ID != message.MsgBitfield {
 		conn.Close()
