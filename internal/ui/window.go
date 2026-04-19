@@ -2,12 +2,15 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -32,8 +35,8 @@ type MainWindow struct {
 	downloads *downloadsScreen
 	currentID screenID
 
-	// nav buttons — stored so we can update their importance for selection.
-	navBtns [4]*widget.Button
+	navBtns   [4]*widget.Button
+	statusDot *widget.Label // ● indicator at sidebar bottom, updated by status ticker
 }
 
 // newMainWindow creates and configures the main application window.
@@ -62,7 +65,7 @@ func newMainWindow(gta *GoTorrentApp) *MainWindow {
 	statusBar := mw.buildStatusBar()
 
 	split := container.NewHSplit(sidebar, mw.content)
-	split.SetOffset(0.15)
+	split.SetOffset(0.07)
 
 	root := container.NewBorder(nil, statusBar, nil, nil, split)
 	mw.win.SetContent(root)
@@ -89,38 +92,55 @@ func newMainWindow(gta *GoTorrentApp) *MainWindow {
 
 // buildSidebar creates the navigation panel with accent indicators.
 func (mw *MainWindow) buildSidebar() fyne.CanvasObject {
-	// Logo area: coloured circle + app name
-	logoLabel := widget.NewLabel("📥")
-	appTitle := widget.NewLabel("GoTorrent")
-	appTitle.TextStyle = fyne.TextStyle{Bold: true}
-	logoRow := container.NewHBox(logoLabel, appTitle)
+	// Sidebar background rectangle
+	bg := canvas.NewRectangle(color.NRGBA{R: 0x0e, G: 0x15, B: 0x30, A: 0xff})
 
-	mw.navBtns[screenDownloads] = widget.NewButtonWithIcon("Downloads", theme.DownloadIcon(), func() {
+	// Logo: accent-colored badge at top
+	logoBg := canvas.NewRectangle(color.NRGBA{R: 0x4d, G: 0x9f, B: 0xff, A: 0xff})
+	logoBg.CornerRadius = 8
+	logoText := canvas.NewText("⬇", color.White)
+	logoText.TextSize = 18
+	logoText.TextStyle = fyne.TextStyle{Bold: true}
+	logo := container.NewStack(
+		container.New(&fixedSizeLayout{w: 36, h: 36}, logoBg),
+		container.NewCenter(logoText),
+	)
+
+	// Nav buttons — icon only, no label text
+	mw.navBtns[screenDownloads] = widget.NewButtonWithIcon("", theme.DownloadIcon(), func() {
 		mw.showDownloads()
 	})
-	mw.navBtns[screenAddTorrent] = widget.NewButtonWithIcon("Add Torrent", theme.ContentAddIcon(), func() {
+	mw.navBtns[screenAddTorrent] = widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
 		mw.showScreen(screenAddTorrent, addTorrentScreen(mw.gta, mw.win))
 	})
-	mw.navBtns[screenSettings] = widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), func() {
+	mw.navBtns[screenSettings] = widget.NewButtonWithIcon("", theme.SettingsIcon(), func() {
 		mw.showScreen(screenSettings, settingsScreen(mw.gta, mw.win))
 	})
-	mw.navBtns[screenAbout] = widget.NewButtonWithIcon("About", theme.InfoIcon(), func() {
+	mw.navBtns[screenAbout] = widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
 		mw.showScreen(screenAbout, aboutScreen(mw.gta))
 	})
-
 	for _, btn := range mw.navBtns {
-		btn.Alignment = widget.ButtonAlignLeading
+		btn.Alignment = widget.ButtonAlignCenter
 	}
 
-	return container.NewVBox(
-		container.NewCenter(logoRow),
+	// Status dot — updated by the status bar ticker
+	mw.statusDot = widget.NewLabel("⚫")
+	mw.statusDot.Alignment = fyne.TextAlignCenter
+
+	nav := container.NewVBox(
+		container.NewCenter(logo),
 		widget.NewSeparator(),
-		mw.navBtns[screenDownloads],
-		mw.navBtns[screenAddTorrent],
+		container.NewCenter(mw.navBtns[screenDownloads]),
+		container.NewCenter(mw.navBtns[screenAddTorrent]),
 		widget.NewSeparator(),
-		mw.navBtns[screenSettings],
-		mw.navBtns[screenAbout],
+		container.NewCenter(mw.navBtns[screenSettings]),
+		container.NewCenter(mw.navBtns[screenAbout]),
+		layout.NewSpacer(),
+		container.NewCenter(mw.statusDot),
+		widget.NewLabel(""),
 	)
+
+	return container.NewStack(bg, nav)
 }
 
 // buildStatusBar creates the bottom status bar with live aggregate stats.
@@ -222,4 +242,18 @@ func (mw *MainWindow) OpenTorrentFile(path string) {
 	mw.win.Show()
 	mw.win.RequestFocus()
 	showPreviewDialog(mw.gta, path, mw.win)
+}
+
+// fixedSizeLayout constrains a single child to a fixed size.
+type fixedSizeLayout struct{ w, h float32 }
+
+func (l *fixedSizeLayout) Layout(objects []fyne.CanvasObject, _ fyne.Size) {
+	for _, o := range objects {
+		o.Move(fyne.NewPos(0, 0))
+		o.Resize(fyne.NewSize(l.w, l.h))
+	}
+}
+
+func (l *fixedSizeLayout) MinSize(_ []fyne.CanvasObject) fyne.Size {
+	return fyne.NewSize(l.w, l.h)
 }
