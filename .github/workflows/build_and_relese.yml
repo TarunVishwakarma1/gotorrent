@@ -15,27 +15,24 @@ jobs:
     name: Build & Package for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false 
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: package-linux
-            artifact: "*linux.tar.gz"
           - os: macos-latest
             target: package-mac
-            artifact: "*mac.tar.gz"
           - os: windows-latest
             target: package-windows
-            artifact: "*windows.zip"
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version: '1.26'
           cache: true
 
       - name: Get Version from Makefile
@@ -58,10 +55,10 @@ jobs:
 
       - name: Install System Dependencies (Windows)
         if: runner.os == 'Windows'
-        run: choco install inkscape zip --no-progress
+        run: choco install inkscape nsis zip --no-progress
 
       - name: Install Fyne CLI
-        run: go install fyne.io/fyne/v2/cmd/fyne@latest
+        run: go install fyne.io/tools/cmd/fyne@latest
 
       - name: Run Tests
         run: make test
@@ -71,10 +68,74 @@ jobs:
         run: make ${{ matrix.target }} VERSION=${{ env.VERSION }}
         shell: bash
 
+      # ================================================================
+      # macOS — .dmg (drag-to-Applications disk image)
+      # ================================================================
+      - name: Create macOS DMG
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dmg_staging
+          cp -R GoTorrent.app dmg_staging/
+          ln -sf /Applications dmg_staging/Applications
+          hdiutil create -volname "GoTorrent" -srcfolder dmg_staging \
+            -ov -format UDZO "gotorrent-${VERSION}-mac.dmg"
+          rm -rf dmg_staging
+
+      # ================================================================
+      # macOS — .pkg (system installer)
+      # ================================================================
+      - name: Create macOS PKG
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p pkg_root/Applications
+          cp -R GoTorrent.app pkg_root/Applications/
+          pkgbuild --root pkg_root \
+            --identifier com.gotorrent.app \
+            --version "${VERSION}" \
+            --install-location / \
+            "gotorrent-${VERSION}-mac.pkg"
+          rm -rf pkg_root
+
+      # ================================================================
+      # Windows — NSIS Setup.exe installer
+      # ================================================================
+      - name: Create Windows Installer
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: makensis /DVERSION=%VERSION% installer\windows\gotorrent.nsi
+
+      # ================================================================
+      # Linux — .deb package
+      # ================================================================
+      - name: Create Linux DEB Package
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p deb_staging/DEBIAN
+          mkdir -p deb_staging/usr/local/bin
+          mkdir -p deb_staging/usr/share/applications
+          mkdir -p deb_staging/usr/share/icons/hicolor/256x256/apps
+          cp gotorrent deb_staging/usr/local/bin/
+          cp assets/gotorrent.desktop deb_staging/usr/share/applications/
+          cp assets/icon.png deb_staging/usr/share/icons/hicolor/256x256/apps/gotorrent.png
+          printf 'Package: gotorrent\nVersion: %s\nSection: net\nPriority: optional\nArchitecture: amd64\nMaintainer: Tarun Vishwakarma\nDescription: GoTorrent - A BitTorrent client written in Go\n' \
+            "${VERSION}" > deb_staging/DEBIAN/control
+          dpkg-deb --build deb_staging "gotorrent-${VERSION}-linux-amd64.deb"
+          rm -rf deb_staging
+
+      # ================================================================
+      # Upload everything to the GitHub Release
+      # ================================================================
       - name: Upload Release Artifacts
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          tag_name: v${{ env.VERSION }} # Automatically creates or updates the tag (e.g., v1.0.0)
-          target_commitish: main        # Tells GitHub to tie the release to the main branch
-          files: ${{ matrix.artifact }}
+          tag_name: v${{ env.VERSION }}
+          target_commitish: main
+          files: |
+            gotorrent-*-mac.tar.gz
+            gotorrent-*-mac.dmg
+            gotorrent-*-mac.pkg
+            gotorrent-*-linux.tar.gz
+            gotorrent-*-linux-amd64.deb
+            gotorrent-*-windows.zip
+            GoTorrent-*-Setup.exe
           generate_release_notes: true

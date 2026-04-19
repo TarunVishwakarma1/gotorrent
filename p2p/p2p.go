@@ -202,7 +202,12 @@ func (t *Torrent) startDownloadWorker(ctx context.Context, peer peers.Peer, work
 				return
 			}
 			if !c.Bitfield.HasPiece(pw.index) {
-				workQueue <- pw
+				// Guard the put-back: workQueue may be closed if ctx was cancelled.
+				select {
+				case workQueue <- pw:
+				case <-ctx.Done():
+					return
+				}
 				// Yield prevents hot-spin when this peer lacks most remaining pieces.
 				runtime.Gosched()
 				continue
@@ -210,13 +215,22 @@ func (t *Torrent) startDownloadWorker(ctx context.Context, peer peers.Peer, work
 			buf, err := attemptDownloadPiece(c, pw)
 			if err != nil {
 				log.Printf("Failed to download piece %d from %s: %v\n", pw.index, peer, err)
-				workQueue <- pw
+				// Guard the put-back: workQueue may be closed if ctx was cancelled.
+				select {
+				case workQueue <- pw:
+				case <-ctx.Done():
+				}
 				return
 			}
 			err = checkIntegrity(pw, buf)
 			if err != nil {
 				log.Printf("Piece %d failed integrity check from %s\n", pw.index, peer)
-				workQueue <- pw
+				// Guard the put-back: workQueue may be closed if ctx was cancelled.
+				select {
+				case workQueue <- pw:
+				case <-ctx.Done():
+					return
+				}
 				continue
 			}
 			_, err = c.Conn.Write(message.NewHave(pw.index).Serialize())

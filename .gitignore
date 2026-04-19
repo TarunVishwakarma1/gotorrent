@@ -1,3 +1,6 @@
 .env
 .torrent
 *.torrent
+.superpowers
+.claude
+docs

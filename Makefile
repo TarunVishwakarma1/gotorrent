@@ -4,7 +4,7 @@ CMD     = ./cmd/gotorrent
 
 LDFLAGS = -ldflags="-s -w"
 
-.PHONY: run build clean deps icon package-mac package-linux package-windows install-linux
+.PHONY: run build clean deps icon package-mac package-linux package-windows install-linux installer-dmg installer-pkg installer-nsis installer-deb
 
 ## deps: download and tidy Go modules
 deps:
@@ -34,6 +34,9 @@ clean:
 	rm -f $(BINARY)
 	rm -rf GoTorrent.app GoTorrent.exe
 	rm -f $(BINARY)-*.tar.gz $(BINARY)-*.zip
+	rm -f $(BINARY)-*.dmg $(BINARY)-*.pkg $(BINARY)-*.deb
+	rm -f GoTorrent-*-Setup.exe
+	rm -rf dmg_staging pkg_root deb_staging
 
 ## package-mac: build a macOS .app bundle
 package-mac: icon
@@ -66,3 +69,44 @@ vet:
 ## test: run unit tests
 test:
 	go test ./internal/... -v
+
+## installer-dmg: create a macOS .dmg drag-to-Applications disk image
+installer-dmg: package-mac
+	@echo "Creating DMG..."
+	mkdir -p dmg_staging
+	cp -R GoTorrent.app dmg_staging/
+	ln -sf /Applications dmg_staging/Applications
+	hdiutil create -volname "GoTorrent" -srcfolder dmg_staging \
+		-ov -format UDZO "$(BINARY)-$(VERSION)-mac.dmg"
+	rm -rf dmg_staging
+
+## installer-pkg: create a macOS .pkg system installer
+installer-pkg: package-mac
+	@echo "Creating PKG..."
+	mkdir -p pkg_root/Applications
+	cp -R GoTorrent.app pkg_root/Applications/
+	pkgbuild --root pkg_root \
+		--identifier com.gotorrent.app \
+		--version $(VERSION) \
+		--install-location / \
+		"$(BINARY)-$(VERSION)-mac.pkg"
+	rm -rf pkg_root
+
+## installer-nsis: create a Windows NSIS Setup.exe (requires NSIS installed)
+installer-nsis: package-windows
+	makensis /DVERSION=$(VERSION) installer/windows/gotorrent.nsi
+
+## installer-deb: create a Linux .deb package
+installer-deb: package-linux
+	@echo "Creating DEB..."
+	mkdir -p deb_staging/DEBIAN
+	mkdir -p deb_staging/usr/local/bin
+	mkdir -p deb_staging/usr/share/applications
+	mkdir -p deb_staging/usr/share/icons/hicolor/256x256/apps
+	cp $(BINARY) deb_staging/usr/local/bin/
+	cp assets/gotorrent.desktop deb_staging/usr/share/applications/
+	cp assets/icon.png deb_staging/usr/share/icons/hicolor/256x256/apps/gotorrent.png
+	printf 'Package: gotorrent\nVersion: $(VERSION)\nSection: net\nPriority: optional\nArchitecture: amd64\nMaintainer: Tarun Vishwakarma\nDescription: GoTorrent - A BitTorrent client written in Go\n' \
+		> deb_staging/DEBIAN/control
+	dpkg-deb --build deb_staging "$(BINARY)-$(VERSION)-linux-amd64.deb"
+	rm -rf deb_staging
