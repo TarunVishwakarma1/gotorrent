@@ -120,33 +120,33 @@ func (t *goTorrentTheme) Size(name fyne.ThemeSizeName) float32 {
 func (t *goTorrentTheme) darkColor(name fyne.ThemeColorName) color.Color {
 	switch name {
 	case theme.ColorNameBackground:
-		return hexColor(0x1a1a2e)
+		return hexColor(0x080d1f)
 	case theme.ColorNameButton:
-		return hexColor(0x0f3460)
+		return hexColor(0x0e1530)
 	case theme.ColorNamePrimary:
-		return hexColor(0xe94560)
+		return hexColor(0x4d9fff)
 	case theme.ColorNameFocus:
-		return hexColor(0xe94560)
+		return hexColor(0x4d9fff)
 	case theme.ColorNameForeground:
-		return hexColor(0xffffff)
+		return hexColor(0xe8eeff)
 	case theme.ColorNameDisabled, theme.ColorNamePlaceHolder:
-		return hexColor(0xa0a0b0)
+		return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x55}
 	case theme.ColorNameInputBackground:
-		return hexColor(0x16213e)
+		return hexColor(0x0e1530)
 	case theme.ColorNameMenuBackground, theme.ColorNameOverlayBackground:
-		return hexColor(0x16213e)
+		return hexColor(0x0e1530)
 	case theme.ColorNameHeaderBackground:
-		return hexColor(0x0f3460)
+		return hexColor(0x0a0f20)
 	case theme.ColorNameSuccess:
-		return hexColor(0x4caf50)
+		return hexColor(0x00e676)
 	case theme.ColorNameWarning:
-		return hexColor(0xff9800)
+		return hexColor(0xffcb6b)
 	case theme.ColorNameError:
-		return hexColor(0xf44336)
+		return hexColor(0xff5370)
 	case theme.ColorNameSelection:
-		return hexColor(0x0f3460)
+		return hexColor(0x4d9fff)
 	case theme.ColorNameShadow:
-		return color.NRGBA{R: 0, G: 0, B: 0, A: 80}
+		return color.NRGBA{R: 0, G: 0, B: 0, A: 150}
 	}
 	return theme.DefaultTheme().Color(name, theme.VariantDark)
 }
