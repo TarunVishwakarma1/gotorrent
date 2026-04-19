@@ -1,6 +1,7 @@
 package torrent
 
 import (
+	"crypto/rand"
 	"crypto/sha1"
 	"fmt"
 
@@ -15,6 +16,7 @@ type TorrentFile struct {
 	PieceHashes [][20]byte
 	InfoHash    [20]byte
 	Port        uint16
+	PeerID      [20]byte
 }
 
 func NewTorrentFile(tstr string) (*TorrentFile, error) {
@@ -65,6 +67,12 @@ func NewTorrentFile(tstr string) (*TorrentFile, error) {
 	rawInfo := parser.Encode(info)
 	infoHash := sha1.Sum([]byte(rawInfo))
 
+	var peerID [20]byte
+	_, err := rand.Read(peerID[:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate peer id: %w", err)
+	}
+
 	return &TorrentFile{
 		Announce:    announce,
 		Name:        name,
@@ -73,5 +81,6 @@ func NewTorrentFile(tstr string) (*TorrentFile, error) {
 		PieceHashes: pieceHashes,
 		InfoHash:    infoHash,
 		Port:        6881,
+		PeerID:      peerID,
 	}, nil
 }
