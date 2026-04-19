@@ -342,3 +342,51 @@ func formatBytes(b float64) string {
 		return fmt.Sprintf("%.0f B", b)
 	}
 }
+
+// progressFillLayout sizes three objects: track (full width), glow (fill + padding), fill (progress width).
+type progressFillLayout struct {
+	value *float64
+}
+
+func (l *progressFillLayout) Layout(objects []fyne.CanvasObject, sz fyne.Size) {
+	if len(objects) < 3 {
+		return
+	}
+	// [0] track — full width background
+	objects[0].Move(fyne.NewPos(0, 0))
+	objects[0].Resize(sz)
+
+	fillW := sz.Width * float32(*l.value)
+	if fillW < 0 {
+		fillW = 0
+	}
+
+	// [1] glow — slightly taller than the bar, same left edge
+	objects[1].Move(fyne.NewPos(0, -2))
+	objects[1].Resize(fyne.NewSize(fillW, sz.Height+4))
+
+	// [2] fill — exact progress width
+	objects[2].Move(fyne.NewPos(0, 0))
+	objects[2].Resize(fyne.NewSize(fillW, sz.Height))
+}
+
+func (l *progressFillLayout) MinSize(_ []fyne.CanvasObject) fyne.Size {
+	return fyne.NewSize(40, 9)
+}
+
+// newProgressBar returns (container, track, glow, fill) for a custom glow progress bar.
+// value must be a pointer to a float64 owned by the calling widget; the layout reads it on every resize.
+func newProgressBar(value *float64) (fyne.CanvasObject, *canvas.Rectangle, *canvas.Rectangle, *canvas.LinearGradient) {
+	track := canvas.NewRectangle(color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x10})
+	track.CornerRadius = 5
+
+	glow := canvas.NewRectangle(color.NRGBA{R: 0x4d, G: 0x9f, B: 0xff, A: 0x40})
+
+	fill := canvas.NewHorizontalGradient(
+		color.NRGBA{R: 0x4d, G: 0x9f, B: 0xff, A: 0xff},
+		color.NRGBA{R: 0xa7, G: 0x8b, B: 0xfa, A: 0xff},
+	)
+
+	bar := container.New(&progressFillLayout{value: value}, track, glow, fill)
+	return bar, track, glow, fill
+}
