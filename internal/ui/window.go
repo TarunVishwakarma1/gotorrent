@@ -146,9 +146,9 @@ func (mw *MainWindow) buildSidebar() fyne.CanvasObject {
 // buildStatusBar creates the bottom status bar with live aggregate stats.
 func (mw *MainWindow) buildStatusBar() fyne.CanvasObject {
 	versionLabel := widget.NewLabel("GoTorrent v" + appVersion)
+
 	speedLabel := widget.NewLabel("↓ 0 B/s")
-	countLabel := widget.NewLabel("0 active")
-	statusDot := widget.NewLabel("⚫")
+	countLabel := widget.NewLabel("Idle")
 
 	go func() {
 		ticker := time.NewTicker(time.Second)
@@ -166,20 +166,25 @@ func (mw *MainWindow) buildStatusBar() fyne.CanvasObject {
 			speedLabel.SetText("↓ " + formatBytes(totalSpeed) + "/s")
 			if active > 0 {
 				countLabel.SetText(fmt.Sprintf("%d/%d active", active, total))
-				statusDot.SetText("🟢")
+				if mw.statusDot != nil {
+					mw.statusDot.SetText("🟢")
+				}
 			} else if total > 0 {
 				countLabel.SetText(fmt.Sprintf("%d torrents", total))
-				statusDot.SetText("⚫")
+				if mw.statusDot != nil {
+					mw.statusDot.SetText("⚫")
+				}
 			} else {
 				countLabel.SetText("Idle")
-				statusDot.SetText("⚫")
+				if mw.statusDot != nil {
+					mw.statusDot.SetText("⚫")
+				}
 			}
 		}
 	}()
 
-	right := container.NewHBox(speedLabel, widget.NewSeparator(), countLabel, statusDot)
-	bar := container.NewBorder(nil, nil, versionLabel, right)
-	return bar
+	right := container.NewHBox(speedLabel, widget.NewSeparator(), countLabel)
+	return container.NewBorder(nil, nil, versionLabel, right)
 }
 
 // registerShortcuts adds keyboard shortcuts to the window canvas.
