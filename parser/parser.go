@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -15,7 +16,7 @@ const (
 )
 
 // Parse will parse the torrent file string to any value
-func Parse(t string) any {
+func Decode(t string) any {
 	i := 0
 	return parseValue(t, &i)
 }
@@ -94,4 +95,43 @@ func parseList(t string, i *int) []any {
 		list = append(list, value)
 	}
 	return list
+}
+
+func Encode(value any) string {
+	var result strings.Builder
+
+	switch v := value.(type) {
+	case string:
+		result.WriteString(strconv.Itoa(len(v)))
+		result.WriteByte(sepByte)
+		result.WriteString(v)
+
+	case int:
+		result.WriteByte(iByte)
+		result.WriteString(strconv.Itoa(v))
+		result.WriteByte(eByte)
+
+	case []any:
+		result.WriteByte(lByte)
+		for _, item := range v {
+			result.WriteString(Encode(item))
+		}
+		result.WriteByte(eByte)
+
+	case map[string]any:
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		result.WriteByte(dictByte)
+		for _, k := range keys {
+			result.WriteString(Encode(k))
+			result.WriteString(Encode(v[k]))
+		}
+		result.WriteByte(eByte)
+	}
+
+	return result.String()
 }

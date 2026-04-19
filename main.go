@@ -2,12 +2,17 @@ package main
 
 import (
 	"fmt"
-	
-	"github.com/tarunvishwakarma1/gotorret/parser"
+	"os"
+
+	"github.com/tarunvishwakarma1/gotorret/torrent"
 )
 
 func main() {
-	torrent := "d8:announce35:http://tracker.example.com/announce4:infod6:lengthi1000e4:name8:test.iso12:piece lengthi256e6:pieces20:AAAAAAAAAAAAAAAAAAAA7:privatei1eee"
-	result := parser.Parse(torrent)
-	fmt.Println("Final result:", result)
+	tf := "debian.torrent"
+	tdata, err := os.ReadFile(tf)
+	t, err := torrent.NewTorrentFile(string(tdata))
+	if err != nil {
+		_ = fmt.Errorf("Error in making torrent file")
+	}
+	fmt.Println("Final result:", t.Announce)
 }
