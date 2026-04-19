@@ -8,44 +8,45 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/tarunvishwakarma1/gotorrent/internal/engine"
 )
 
-// ProgressRow renders one torrent entry as a rich card widget.
-// It shows: name, size, progress bar + %, speed, peers, ETA,
-// downloaded bytes, infohash, and status — plus action buttons.
+// ProgressRow renders one torrent entry as a rich 4-row card widget.
 type ProgressRow struct {
 	widget.BaseWidget
 
-	// Status strip — 4px colored left bar
+	// Left status strip
 	strip *canvas.Rectangle
 
-	// Header: icon+name | status badge
+	// Row 1: name | badge
 	iconName   *widget.Label
 	badgeRect  *canvas.Rectangle
 	badgeLabel *canvas.Text
 
-	// Progress row
-	bar     *widget.ProgressBar
-	percent *widget.Label
-	total   *widget.Label
+	// Row 2: custom glow progress bar
+	progressValue float64
+	progressTrack *canvas.Rectangle
+	progressGlow  *canvas.Rectangle
+	progressFill  *canvas.LinearGradient
+	progressBar   fyne.CanvasObject // container holding track/glow/fill
+	percent       *widget.Label
+	total         *widget.Label
 
-	// Stats row
+	// Row 3: stats
 	downloaded *widget.Label
 	speed      *widget.Label
 	peers      *widget.Label
 	eta        *widget.Label
 
-	// Footer: hash | buttons
+	// Row 4: hash | buttons
 	hash      *widget.Label
 	pauseBtn  *widget.Button
 	removeBtn *widget.Button
 	openBtn   *widget.Button
 
-	// Error row (hidden unless status==Error)
+	// Error row
 	errLabel *widget.Label
 
 	currentID     string
@@ -57,7 +58,6 @@ type ProgressRow struct {
 	OnOpen   func(id string)
 }
 
-// NewProgressRow creates a ProgressRow.
 func NewProgressRow(onPause, onResume func(id string), onRemove, onOpen func(id string)) *ProgressRow {
 	r := &ProgressRow{
 		OnPause:  onPause,
@@ -66,23 +66,24 @@ func NewProgressRow(onPause, onResume func(id string), onRemove, onOpen func(id 
 		OnOpen:   onOpen,
 	}
 
-	r.strip = canvas.NewRectangle(color.NRGBA{R: 0x9e, G: 0x9e, B: 0x9e, A: 0xff})
+	r.strip = canvas.NewRectangle(statusColor(engine.StatusQueued))
 
 	r.iconName = widget.NewLabel("📄  Loading…")
 	r.iconName.TextStyle = fyne.TextStyle{Bold: true}
 
 	r.badgeRect = canvas.NewRectangle(statusColor(engine.StatusQueued))
-	r.badgeRect.CornerRadius = 5
+	r.badgeRect.CornerRadius = 10
 	r.badgeLabel = canvas.NewText("Queued", color.White)
-	r.badgeLabel.TextSize = 11
+	r.badgeLabel.TextSize = 9
 	r.badgeLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	r.bar = widget.NewProgressBar()
+	r.progressBar, r.progressTrack, r.progressGlow, r.progressFill = newProgressBar(&r.progressValue)
+
 	r.percent = widget.NewLabel("0.0%")
+	r.percent.TextStyle = fyne.TextStyle{Bold: true}
 	r.total = widget.NewLabel("—")
 
 	r.downloaded = widget.NewLabel("—")
-	r.downloaded.TextStyle = fyne.TextStyle{Bold: true}
 	r.speed = widget.NewLabel("↓ —")
 	r.peers = widget.NewLabel("0 peers")
 	r.eta = widget.NewLabel("ETA —")
@@ -90,27 +91,32 @@ func NewProgressRow(onPause, onResume func(id string), onRemove, onOpen func(id 
 	r.hash = widget.NewLabel("")
 	r.hash.TextStyle = fyne.TextStyle{Monospace: true}
 
-	r.pauseBtn = widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), func() {
-		if r.currentID != "" {
-			if r.currentStatus == engine.StatusPaused || r.currentStatus == engine.StatusError {
-				if r.OnResume != nil {
-					r.OnResume(r.currentID)
-				}
-			} else {
-				if r.OnPause != nil {
-					r.OnPause(r.currentID)
-				}
+	r.pauseBtn = widget.NewButton("Pause", func() {
+		if r.currentID == "" {
+			return
+		}
+		if r.currentStatus == engine.StatusPaused || r.currentStatus == engine.StatusError {
+			if r.OnResume != nil {
+				r.OnResume(r.currentID)
+			}
+		} else {
+			if r.OnPause != nil {
+				r.OnPause(r.currentID)
 			}
 		}
 	})
-	r.removeBtn = widget.NewButtonWithIcon("Remove", theme.DeleteIcon(), func() {
-		if r.currentID != "" && r.OnRemove != nil {
-			r.OnRemove(r.currentID)
-		}
-	})
-	r.openBtn = widget.NewButtonWithIcon("Open", theme.FolderOpenIcon(), func() {
+	r.pauseBtn.Importance = widget.HighImportance
+
+	r.openBtn = widget.NewButton("Open", func() {
 		if r.currentID != "" && r.OnOpen != nil {
 			r.OnOpen(r.currentID)
+		}
+	})
+	r.openBtn.Importance = widget.MediumImportance
+
+	r.removeBtn = widget.NewButton("Remove", func() {
+		if r.currentID != "" && r.OnRemove != nil {
+			r.OnRemove(r.currentID)
 		}
 	})
 	r.removeBtn.Importance = widget.DangerImportance
@@ -122,29 +128,27 @@ func NewProgressRow(onPause, onResume func(id string), onRemove, onOpen func(id 
 	return r
 }
 
-// Update populates all fields from state. Thread-safe (Fyne handles canvas updates).
 func (r *ProgressRow) Update(state *engine.TorrentState) {
 	r.currentID = state.ID
 	r.currentStatus = state.Status
 
-	// — Status strip colour —
 	sc := statusColor(state.Status)
+
+	// Strip
 	r.strip.FillColor = sc
 	r.strip.Refresh()
 
-	// — Badge —
+	// Badge
 	r.badgeRect.FillColor = sc
 	r.badgeRect.Refresh()
 	r.badgeLabel.Text = string(state.Status)
 	r.badgeLabel.Color = badgeTextColor(state.Status)
 	r.badgeLabel.Refresh()
 
-	// — Name + icon —
-	icon := "📄"
+	// Name
+	icon := engine.FileIconForName(state.Name)
 	if state.IsMultiFile {
 		icon = "🗂"
-	} else {
-		icon = engine.FileIconForName(state.Name)
 	}
 	filesInfo := ""
 	if state.IsMultiFile && len(state.Files) > 0 {
@@ -152,17 +156,42 @@ func (r *ProgressRow) Update(state *engine.TorrentState) {
 	}
 	r.iconName.SetText(fmt.Sprintf("%s  %s%s", icon, state.Name, filesInfo))
 
-	// — Progress —
-	r.bar.SetValue(state.Progress)
+	// Progress bar value + colors
+	r.progressValue = state.Progress
+	switch state.Status {
+	case engine.StatusComplete:
+		green := color.NRGBA{R: 0x00, G: 0xe6, B: 0x76, A: 0xff}
+		r.progressFill.StartColor = green
+		r.progressFill.EndColor = green
+		r.progressGlow.FillColor = color.NRGBA{R: 0x00, G: 0xe6, B: 0x76, A: 0x55}
+	case engine.StatusPaused, engine.StatusQueued:
+		grey := color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x33}
+		r.progressFill.StartColor = grey
+		r.progressFill.EndColor = grey
+		r.progressGlow.FillColor = color.NRGBA{A: 0}
+	case engine.StatusError:
+		red := color.NRGBA{R: 0xff, G: 0x53, B: 0x70, A: 0xff}
+		r.progressFill.StartColor = red
+		r.progressFill.EndColor = red
+		r.progressGlow.FillColor = color.NRGBA{R: 0xff, G: 0x53, B: 0x70, A: 0x40}
+	default: // Downloading, Connecting, Verifying
+		r.progressFill.StartColor = color.NRGBA{R: 0x4d, G: 0x9f, B: 0xff, A: 0xff}
+		r.progressFill.EndColor = color.NRGBA{R: 0xa7, G: 0x8b, B: 0xfa, A: 0xff}
+		r.progressGlow.FillColor = color.NRGBA{R: 0x4d, G: 0x9f, B: 0xff, A: 0x55}
+	}
+	r.progressFill.Refresh()
+	r.progressGlow.Refresh()
+
+	// Percent + total
 	r.percent.SetText(fmt.Sprintf("%.1f%%", state.Progress*100))
 	r.total.SetText(formatBytes(float64(state.TotalSize)))
 
-	// — Downloaded —
+	// Downloaded
 	r.downloaded.SetText(fmt.Sprintf("%s / %s",
 		formatBytes(float64(state.Downloaded)),
 		formatBytes(float64(state.TotalSize))))
 
-	// — Speed, peers, ETA —
+	// Speed, peers, ETA
 	if state.Status == engine.StatusDownloading {
 		r.speed.SetText(fmt.Sprintf("↓ %s/s", formatBytes(state.Speed)))
 		r.peers.SetText(fmt.Sprintf("%d peers", state.Peers))
@@ -181,7 +210,7 @@ func (r *ProgressRow) Update(state *engine.TorrentState) {
 		r.eta.SetText("—")
 	}
 
-	// — Infohash —
+	// Hash
 	if state.InfoHash != "" {
 		h := state.InfoHash
 		if len(h) > 16 {
@@ -190,7 +219,7 @@ func (r *ProgressRow) Update(state *engine.TorrentState) {
 		r.hash.SetText("#" + h)
 	}
 
-	// — Error —
+	// Error label
 	if state.Status == engine.StatusError && state.Error != "" {
 		r.errLabel.SetText("⚠ " + state.Error)
 		r.errLabel.Show()
@@ -198,69 +227,57 @@ func (r *ProgressRow) Update(state *engine.TorrentState) {
 		r.errLabel.Hide()
 	}
 
-	// — Pause/Resume button —
+	// Pause / Resume / Retry button text
 	switch state.Status {
 	case engine.StatusDownloading, engine.StatusConnecting:
 		r.pauseBtn.SetText("Pause")
-		r.pauseBtn.SetIcon(theme.MediaPauseIcon())
 		r.pauseBtn.Show()
 	case engine.StatusPaused:
 		r.pauseBtn.SetText("Resume")
-		r.pauseBtn.SetIcon(theme.MediaPlayIcon())
 		r.pauseBtn.Show()
 	case engine.StatusError:
 		r.pauseBtn.SetText("Retry")
-		r.pauseBtn.SetIcon(theme.ViewRefreshIcon())
 		r.pauseBtn.Show()
-	case engine.StatusComplete:
-		r.pauseBtn.Hide()
-	case engine.StatusQueued:
+	default:
 		r.pauseBtn.Hide()
 	}
 
 	r.Refresh()
 }
 
-// CreateRenderer implements fyne.Widget. Called once per list template item.
 func (r *ProgressRow) CreateRenderer() fyne.WidgetRenderer {
-	// Badge: coloured rect + text layered
+	// Badge: colored pill bg + centered text
 	badge := container.New(&badgeLayout{}, r.badgeRect, container.NewCenter(r.badgeLabel))
 
-	// Header row: [icon+name] [spacer] [badge]
-	header := container.NewBorder(nil, nil, nil, badge, r.iconName)
+	// Row 1: [icon + name]  [badge]
+	row1 := container.NewBorder(nil, nil, nil, badge, r.iconName)
 
-	// Progress row: [bar] [percent] [total]
-	progressRow := container.NewBorder(nil, nil, nil,
+	// Row 2: [progress bar (stretches)]  [percent]  [total]
+	row2 := container.NewBorder(nil, nil, nil,
 		container.NewHBox(r.percent, r.total),
-		r.bar,
+		r.progressBar,
 	)
 
-	// Stats row
-	statsRow := container.NewHBox(
-		r.downloaded,
-		separatorLabel(),
+	// Row 3: stats
+	row3 := container.NewHBox(
 		r.speed,
 		separatorLabel(),
 		r.peers,
 		separatorLabel(),
 		r.eta,
+		separatorLabel(),
+		r.downloaded,
 	)
 
-	// Footer: [hash] [spacer] [buttons]
-	buttons := container.NewHBox(r.pauseBtn, r.removeBtn, r.openBtn)
-	footer := container.NewBorder(nil, nil, r.hash, buttons)
+	// Row 4: [hash]  [buttons]
+	buttons := container.NewHBox(r.pauseBtn, r.openBtn, r.removeBtn)
+	row4 := container.NewBorder(nil, nil, r.hash, buttons)
 
-	// Card body (everything except the strip)
-	body := container.NewVBox(
-		header,
-		progressRow,
-		statsRow,
-		r.errLabel,
-		footer,
-	)
-
-	// Outer: [4px strip] [body with padding]
+	// Card body
+	body := container.NewVBox(row1, row2, row3, r.errLabel, row4)
 	padded := container.NewPadded(body)
+
+	// Outer: 5px left strip + padded card body
 	outer := container.New(&stripLayout{stripW: 5}, r.strip, padded)
 
 	return widget.NewSimpleRenderer(outer)
