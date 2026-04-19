@@ -15,7 +15,7 @@ const (
 	sepByte  byte = ':'
 )
 
-// Parse will parse the torrent file string to any value
+// The returned value will be a string, int, []any, or map[string]any depending on the encoded type; it returns nil for empty input.
 func Decode(t string) any {
 	i := 0
 	return parseValue(t, &i)
@@ -85,6 +85,7 @@ func parseString(t string, i *int) string {
 	return result.String()
 }
 
+// It advances *i over the list contents and leaves it positioned at the list terminator 'e' (the terminator itself is not consumed).
 func parseList(t string, i *int) []any {
 	var list []any
 	*i++
@@ -97,6 +98,15 @@ func parseList(t string, i *int) []any {
 	return list
 }
 
+// Encode serializes the given value into bencode-like format.
+//
+// Supported input types:
+// - string: encoded as "<length>:<bytes>"
+// - int: encoded as "i<decimal>e"
+// - []any: encoded as "l<encoded-elements>e" with each element encoded recursively
+// - map[string]any: encoded as "d<encoded-key><encoded-value>...e"; map keys are sorted
+//   lexicographically to ensure deterministic output.
+// For any unsupported type the function returns an empty string.
 func Encode(value any) string {
 	var result strings.Builder
 

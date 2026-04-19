@@ -12,6 +12,8 @@ import (
 	"github.com/tarunvishwakarma1/gotorret/torrent"
 )
 
+// GetPeers contacts the torrent's announce tracker and retrieves the raw compact peer list.
+// It returns the compact peer list as provided by the tracker, or an error if the announce URL is invalid, the HTTP request or response read fails, the tracker response cannot be decoded, or the peers field is absent.
 func GetPeers(tf *torrent.TorrentFile) (string, error) {
 	var peerId [20]byte
 	base, err := url.Parse(tf.Announce)
