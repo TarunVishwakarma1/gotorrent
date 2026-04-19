@@ -45,12 +45,12 @@ package-mac: icon
 
 ## package-linux: build a Linux executable package
 package-linux: icon
-	fyne package -os linux -icon $(CURDIR)/assets/icon.png -name GoTorrent --app-id com.gotorrent.app -src $(CMD)
+	go build $(LDFLAGS) -o $(BINARY) $(CMD)
 	tar -czf $(BINARY)-$(VERSION)-linux.tar.gz $(BINARY)
 
 ## package-windows: build a Windows executable
 package-windows: icon
-	fyne package -os windows -icon $(CURDIR)/assets/icon.png -name GoTorrent --app-id com.gotorrent.app -src $(CMD)
+	go build -ldflags="-s -w -H windowsgui" -o GoTorrent.exe $(CMD)
 	zip $(BINARY)-$(VERSION)-windows.zip GoTorrent.exe
 
 ## install-linux: install the binary and .desktop file on Linux
