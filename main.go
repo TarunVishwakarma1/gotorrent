@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tarunvishwakarma1/gotorret/p2p"
-	"github.com/tarunvishwakarma1/gotorret/peers"
-	"github.com/tarunvishwakarma1/gotorret/torrent"
-	"github.com/tarunvishwakarma1/gotorret/tracker"
+	"github.com/tarunvishwakarma1/gotorrent/p2p"
+	"github.com/tarunvishwakarma1/gotorrent/peers"
+	"github.com/tarunvishwakarma1/gotorrent/torrent"
+	"github.com/tarunvishwakarma1/gotorrent/tracker"
 )
 
 func main() {

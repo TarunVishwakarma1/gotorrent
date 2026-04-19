@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/tarunvishwakarma1/gotorret/parser"
-	"github.com/tarunvishwakarma1/gotorret/torrent"
+	"github.com/tarunvishwakarma1/gotorrent/parser"
+	"github.com/tarunvishwakarma1/gotorrent/torrent"
 )
 
 // makeTorrentFile returns a minimal TorrentFile with the given announce URL.
