@@ -14,5 +14,5 @@ func main() {
 	if err != nil {
 		_ = fmt.Errorf("Error in making torrent file")
 	}
-	fmt.Println("Final result:", t.Announce)
+	fmt.Printf("Final result: %x\n", t.InfoHash)
 }
