@@ -120,31 +120,31 @@ func (t *goTorrentTheme) Size(name fyne.ThemeSizeName) float32 {
 func (t *goTorrentTheme) darkColor(name fyne.ThemeColorName) color.Color {
 	switch name {
 	case theme.ColorNameBackground:
-		return hexColor(0x080d1f)
+		return color.NRGBA{R: 0x0d, G: 0x0d, B: 0x1f, A: 0xff}
 	case theme.ColorNameButton:
-		return hexColor(0x0e1530)
+		return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x0f}
 	case theme.ColorNamePrimary:
-		return hexColor(0x4d9fff)
+		return color.NRGBA{R: 0x0a, G: 0x84, B: 0xff, A: 0xff}
 	case theme.ColorNameFocus:
-		return hexColor(0x4d9fff)
+		return color.NRGBA{R: 0x0a, G: 0x84, B: 0xff, A: 0xff}
 	case theme.ColorNameForeground:
-		return hexColor(0xe8eeff)
+		return color.NRGBA{R: 0xf2, G: 0xf2, B: 0xf7, A: 0xff}
 	case theme.ColorNameDisabled, theme.ColorNamePlaceHolder:
 		return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x55}
 	case theme.ColorNameInputBackground:
-		return hexColor(0x0e1530)
+		return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x0f}
 	case theme.ColorNameMenuBackground, theme.ColorNameOverlayBackground:
-		return hexColor(0x0e1530)
+		return color.NRGBA{R: 0x1c, G: 0x1c, B: 0x2e, A: 0xff}
 	case theme.ColorNameHeaderBackground:
-		return hexColor(0x0a0f20)
+		return color.NRGBA{R: 0x0d, G: 0x0d, B: 0x1f, A: 0xff}
 	case theme.ColorNameSuccess:
-		return hexColor(0x00e676)
+		return color.NRGBA{R: 0x30, G: 0xd1, B: 0x58, A: 0xff}
 	case theme.ColorNameWarning:
-		return hexColor(0xffcb6b)
+		return color.NRGBA{R: 0xff, G: 0x9f, B: 0x0a, A: 0xff}
 	case theme.ColorNameError:
-		return hexColor(0xff5370)
+		return color.NRGBA{R: 0xff, G: 0x45, B: 0x3a, A: 0xff}
 	case theme.ColorNameSelection:
-		return hexColor(0x4d9fff)
+		return color.NRGBA{R: 0x0a, G: 0x84, B: 0xff, A: 0x40}
 	case theme.ColorNameShadow:
 		return color.NRGBA{R: 0, G: 0, B: 0, A: 150}
 	}
