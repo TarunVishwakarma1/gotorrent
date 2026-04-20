@@ -155,8 +155,11 @@ func (mw *MainWindow) buildSidebar() fyne.CanvasObject {
 	return container.NewStack(bg, nav)
 }
 
-// buildStatusBar creates the bottom status bar with live aggregate stats.
+// buildStatusBar creates the bottom glass status bar.
 func (mw *MainWindow) buildStatusBar() fyne.CanvasObject {
+	barBg := canvas.NewRectangle(color.NRGBA{R: 0x00, G: 0x00, B: 0x00, A: 0x4c})
+	topBorder := canvas.NewRectangle(color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x0f})
+
 	versionLabel := widget.NewLabel("GoTorrent v" + appVersion)
 
 	speedLabel := widget.NewLabel("↓ 0 B/s")
@@ -178,17 +181,15 @@ func (mw *MainWindow) buildStatusBar() fyne.CanvasObject {
 			speedLabel.SetText("↓ " + formatBytes(totalSpeed) + "/s")
 			if active > 0 {
 				countLabel.SetText(fmt.Sprintf("%d/%d active", active, total))
-				if mw.statusDot != nil {
-					mw.statusDot.SetText("🟢")
-				}
 			} else if total > 0 {
 				countLabel.SetText(fmt.Sprintf("%d torrents", total))
-				if mw.statusDot != nil {
-					mw.statusDot.SetText("⚫")
-				}
 			} else {
 				countLabel.SetText("Idle")
-				if mw.statusDot != nil {
+			}
+			if mw.statusDot != nil {
+				if active > 0 {
+					mw.statusDot.SetText("🟢")
+				} else {
 					mw.statusDot.SetText("⚫")
 				}
 			}
@@ -196,7 +197,13 @@ func (mw *MainWindow) buildStatusBar() fyne.CanvasObject {
 	}()
 
 	right := container.NewHBox(speedLabel, widget.NewSeparator(), countLabel)
-	return container.NewBorder(nil, nil, versionLabel, right)
+	bar := container.NewBorder(nil, nil, versionLabel, right)
+
+	borderLine := container.New(&fixedSizeLayout{w: 9999, h: 1}, topBorder)
+	return container.NewStack(
+		container.New(&fixedSizeLayout{w: 9999, h: 28}, barBg),
+		container.NewBorder(borderLine, nil, nil, nil, bar),
+	)
 }
 
 // registerShortcuts adds keyboard shortcuts to the window canvas.
