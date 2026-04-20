@@ -158,7 +158,6 @@ func (mw *MainWindow) buildSidebar() fyne.CanvasObject {
 // buildStatusBar creates the bottom glass status bar.
 func (mw *MainWindow) buildStatusBar() fyne.CanvasObject {
 	barBg := canvas.NewRectangle(color.NRGBA{R: 0x00, G: 0x00, B: 0x00, A: 0x4c})
-	topBorder := canvas.NewRectangle(color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x0f})
 
 	versionLabel := widget.NewLabel("GoTorrent v" + appVersion)
 
@@ -199,11 +198,7 @@ func (mw *MainWindow) buildStatusBar() fyne.CanvasObject {
 	right := container.NewHBox(speedLabel, widget.NewSeparator(), countLabel)
 	bar := container.NewBorder(nil, nil, versionLabel, right)
 
-	borderLine := container.New(&fixedSizeLayout{w: 9999, h: 1}, topBorder)
-	return container.NewStack(
-		container.New(&fixedSizeLayout{w: 9999, h: 28}, barBg),
-		container.NewBorder(borderLine, nil, nil, nil, bar),
-	)
+	return container.NewStack(barBg, bar)
 }
 
 // registerShortcuts adds keyboard shortcuts to the window canvas.
