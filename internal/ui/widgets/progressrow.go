@@ -13,24 +13,26 @@ import (
 	"github.com/tarunvishwakarma1/gotorrent/internal/engine"
 )
 
-// ProgressRow renders one torrent entry as a rich 4-row card widget.
+// ProgressRow renders one torrent entry as a rich 4-row glass card widget.
 type ProgressRow struct {
 	widget.BaseWidget
 
-	// Left status strip
-	strip *canvas.Rectangle
+	// Card glass background
+	cardBg     *canvas.Rectangle
+	cardBorder *canvas.Rectangle
 
 	// Row 1: name | badge
-	iconName   *widget.Label
-	badgeRect  *canvas.Rectangle
-	badgeLabel *canvas.Text
+	iconName    *widget.Label
+	badgeBg     *canvas.Rectangle
+	badgeBorder *canvas.Rectangle
+	badgeLabel  *canvas.Text
 
 	// Row 2: custom glow progress bar
 	progressValue float64
 	progressTrack *canvas.Rectangle
 	progressGlow  *canvas.Rectangle
 	progressFill  *canvas.LinearGradient
-	progressBar   fyne.CanvasObject // container holding track/glow/fill
+	progressBar   fyne.CanvasObject
 	percent       *widget.Label
 	total         *widget.Label
 
@@ -66,17 +68,31 @@ func NewProgressRow(onPause, onResume func(id string), onRemove, onOpen func(id 
 		OnOpen:   onOpen,
 	}
 
-	r.strip = canvas.NewRectangle(statusColor(engine.StatusQueued))
+	// Glass card background
+	r.cardBg = canvas.NewRectangle(color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x0f})
+	r.cardBg.CornerRadius = 16
 
+	r.cardBorder = canvas.NewRectangle(color.Transparent)
+	r.cardBorder.CornerRadius = 16
+	r.cardBorder.StrokeColor = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x17}
+	r.cardBorder.StrokeWidth = 1
+
+	// Name
 	r.iconName = widget.NewLabel("📄  Loading…")
 	r.iconName.TextStyle = fyne.TextStyle{Bold: true}
 
-	r.badgeRect = canvas.NewRectangle(statusColor(engine.StatusQueued))
-	r.badgeRect.CornerRadius = 10
-	r.badgeLabel = canvas.NewText("Queued", color.White)
+	// Badge: glass pill
+	r.badgeBg = canvas.NewRectangle(glassStatusBadgeBg(engine.StatusQueued))
+	r.badgeBg.CornerRadius = 10
+	r.badgeBorder = canvas.NewRectangle(color.Transparent)
+	r.badgeBorder.CornerRadius = 10
+	r.badgeBorder.StrokeColor = glassStatusBadgeBorder(engine.StatusQueued)
+	r.badgeBorder.StrokeWidth = 1
+	r.badgeLabel = canvas.NewText("Queued", glassStatusColor(engine.StatusQueued))
 	r.badgeLabel.TextSize = 9
 	r.badgeLabel.TextStyle = fyne.TextStyle{Bold: true}
 
+	// Progress bar
 	r.progressBar, r.progressTrack, r.progressGlow, r.progressFill = newProgressBar(&r.progressValue)
 
 	r.percent = widget.NewLabel("0.0%")
@@ -344,6 +360,48 @@ func statusColor(s engine.Status) color.Color {
 // badgeTextColor returns white or black for the badge text.
 func badgeTextColor(_ engine.Status) color.Color {
 	return color.White
+}
+
+// glassStatusColor returns the Apple-accent text color for a status badge.
+func glassStatusColor(s engine.Status) color.Color {
+	switch s {
+	case engine.StatusDownloading, engine.StatusConnecting, engine.StatusVerifying:
+		return color.NRGBA{R: 0x0a, G: 0x84, B: 0xff, A: 0xff}
+	case engine.StatusComplete:
+		return color.NRGBA{R: 0x30, G: 0xd1, B: 0x58, A: 0xff}
+	case engine.StatusError:
+		return color.NRGBA{R: 0xff, G: 0x45, B: 0x3a, A: 0xff}
+	default: // Paused, Queued
+		return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x66}
+	}
+}
+
+// glassStatusBadgeBg returns the tinted pill background for a status badge.
+func glassStatusBadgeBg(s engine.Status) color.Color {
+	switch s {
+	case engine.StatusDownloading, engine.StatusConnecting, engine.StatusVerifying:
+		return color.NRGBA{R: 0x0a, G: 0x84, B: 0xff, A: 0x26}
+	case engine.StatusComplete:
+		return color.NRGBA{R: 0x30, G: 0xd1, B: 0x58, A: 0x1f}
+	case engine.StatusError:
+		return color.NRGBA{R: 0xff, G: 0x45, B: 0x3a, A: 0x1f}
+	default:
+		return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x14}
+	}
+}
+
+// glassStatusBadgeBorder returns the tinted pill border for a status badge.
+func glassStatusBadgeBorder(s engine.Status) color.Color {
+	switch s {
+	case engine.StatusDownloading, engine.StatusConnecting, engine.StatusVerifying:
+		return color.NRGBA{R: 0x0a, G: 0x84, B: 0xff, A: 0x40}
+	case engine.StatusComplete:
+		return color.NRGBA{R: 0x30, G: 0xd1, B: 0x58, A: 0x33}
+	case engine.StatusError:
+		return color.NRGBA{R: 0xff, G: 0x45, B: 0x3a, A: 0x33}
+	default:
+		return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x1a}
+	}
 }
 
 // formatBytes returns human-readable size string.
