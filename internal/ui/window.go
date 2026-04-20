@@ -90,14 +90,17 @@ func newMainWindow(gta *GoTorrentApp) *MainWindow {
 	return mw
 }
 
-// buildSidebar creates the navigation panel with accent indicators.
+// buildSidebar creates the glass navigation panel.
 func (mw *MainWindow) buildSidebar() fyne.CanvasObject {
-	// Sidebar background rectangle
-	bg := canvas.NewRectangle(color.NRGBA{R: 0x0e, G: 0x15, B: 0x30, A: 0xff})
+	// Glass background panel
+	bg := canvas.NewRectangle(color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x12})
+	bg.CornerRadius = 18
+	bg.StrokeColor = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x1a}
+	bg.StrokeWidth = 1
 
-	// Logo: accent-colored badge at top
-	logoBg := canvas.NewRectangle(color.NRGBA{R: 0x4d, G: 0x9f, B: 0xff, A: 0xff})
-	logoBg.CornerRadius = 8
+	// Logo badge: blue circle
+	logoBg := canvas.NewRectangle(color.NRGBA{R: 0x0a, G: 0x84, B: 0xff, A: 0xff})
+	logoBg.CornerRadius = 12
 	logoText := canvas.NewText("⬇", color.White)
 	logoText.TextSize = 18
 	logoText.TextStyle = fyne.TextStyle{Bold: true}
@@ -106,7 +109,7 @@ func (mw *MainWindow) buildSidebar() fyne.CanvasObject {
 		container.NewCenter(logoText),
 	)
 
-	// Nav buttons — icon only, no label text
+	// Nav buttons — icon only
 	mw.navBtns[screenDownloads] = widget.NewButtonWithIcon("", theme.DownloadIcon(), func() {
 		mw.showDownloads()
 	})
@@ -123,9 +126,18 @@ func (mw *MainWindow) buildSidebar() fyne.CanvasObject {
 		btn.Alignment = widget.ButtonAlignCenter
 	}
 
-	// Status dot — updated by the status bar ticker
-	mw.statusDot = widget.NewLabel("⚫")
-	mw.statusDot.Alignment = fyne.TextAlignCenter
+	// Status dot: glow effect with two stacked rectangles
+	dotGlow := canvas.NewRectangle(color.NRGBA{R: 0x30, G: 0xd1, B: 0x58, A: 0x55})
+	dotGlow.CornerRadius = 6
+	dotSolid := canvas.NewRectangle(color.NRGBA{R: 0x30, G: 0xd1, B: 0x58, A: 0xff})
+	dotSolid.CornerRadius = 4
+	statusDotCanvas := container.NewStack(
+		container.New(&fixedSizeLayout{w: 12, h: 12}, dotGlow),
+		container.New(&fixedSizeLayout{w: 8, h: 8}, dotSolid),
+	)
+	// Keep widget.Label hidden for status ticker compatibility
+	mw.statusDot = widget.NewLabel("")
+	mw.statusDot.Hide()
 
 	nav := container.NewVBox(
 		container.NewCenter(logo),
@@ -136,8 +148,8 @@ func (mw *MainWindow) buildSidebar() fyne.CanvasObject {
 		container.NewCenter(mw.navBtns[screenSettings]),
 		container.NewCenter(mw.navBtns[screenAbout]),
 		layout.NewSpacer(),
-		container.NewCenter(mw.statusDot),
-		widget.NewLabel(""),
+		container.NewCenter(statusDotCanvas),
+		widget.NewLabel(""), // bottom padding
 	)
 
 	return container.NewStack(bg, nav)
