@@ -148,17 +148,13 @@ func (r *ProgressRow) Update(state *engine.TorrentState) {
 	r.currentID = state.ID
 	r.currentStatus = state.Status
 
-	sc := statusColor(state.Status)
-
-	// Strip
-	r.strip.FillColor = sc
-	r.strip.Refresh()
-
-	// Badge
-	r.badgeRect.FillColor = sc
-	r.badgeRect.Refresh()
+	// Badge colors
+	r.badgeBg.FillColor = glassStatusBadgeBg(state.Status)
+	r.badgeBg.Refresh()
+	r.badgeBorder.StrokeColor = glassStatusBadgeBorder(state.Status)
+	r.badgeBorder.Refresh()
 	r.badgeLabel.Text = string(state.Status)
-	r.badgeLabel.Color = badgeTextColor(state.Status)
+	r.badgeLabel.Color = glassStatusColor(state.Status)
 	r.badgeLabel.Refresh()
 
 	// Name
@@ -176,24 +172,24 @@ func (r *ProgressRow) Update(state *engine.TorrentState) {
 	r.progressValue = state.Progress
 	switch state.Status {
 	case engine.StatusComplete:
-		green := color.NRGBA{R: 0x00, G: 0xe6, B: 0x76, A: 0xff}
+		green := color.NRGBA{R: 0x30, G: 0xd1, B: 0x58, A: 0xff}
 		r.progressFill.StartColor = green
 		r.progressFill.EndColor = green
-		r.progressGlow.FillColor = color.NRGBA{R: 0x00, G: 0xe6, B: 0x76, A: 0x55}
+		r.progressGlow.FillColor = color.NRGBA{R: 0x30, G: 0xd1, B: 0x58, A: 0x40}
 	case engine.StatusPaused, engine.StatusQueued:
 		grey := color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x33}
 		r.progressFill.StartColor = grey
 		r.progressFill.EndColor = grey
 		r.progressGlow.FillColor = color.NRGBA{A: 0}
 	case engine.StatusError:
-		red := color.NRGBA{R: 0xff, G: 0x53, B: 0x70, A: 0xff}
+		red := color.NRGBA{R: 0xff, G: 0x45, B: 0x3a, A: 0xff}
 		r.progressFill.StartColor = red
 		r.progressFill.EndColor = red
-		r.progressGlow.FillColor = color.NRGBA{R: 0xff, G: 0x53, B: 0x70, A: 0x40}
+		r.progressGlow.FillColor = color.NRGBA{R: 0xff, G: 0x45, B: 0x3a, A: 0x40}
 	default: // Downloading, Connecting, Verifying
-		r.progressFill.StartColor = color.NRGBA{R: 0x4d, G: 0x9f, B: 0xff, A: 0xff}
-		r.progressFill.EndColor = color.NRGBA{R: 0xa7, G: 0x8b, B: 0xfa, A: 0xff}
-		r.progressGlow.FillColor = color.NRGBA{R: 0x4d, G: 0x9f, B: 0xff, A: 0x55}
+		r.progressFill.StartColor = color.NRGBA{R: 0x0a, G: 0x84, B: 0xff, A: 0xff}
+		r.progressFill.EndColor = color.NRGBA{R: 0x5e, G: 0x5c, B: 0xe6, A: 0xff}
+		r.progressGlow.FillColor = color.NRGBA{R: 0x0a, G: 0x84, B: 0xff, A: 0x40}
 	}
 	r.progressFill.Refresh()
 	r.progressGlow.Refresh()
@@ -262,8 +258,12 @@ func (r *ProgressRow) Update(state *engine.TorrentState) {
 }
 
 func (r *ProgressRow) CreateRenderer() fyne.WidgetRenderer {
-	// Badge: colored pill bg + centered text
-	badge := container.New(&badgeLayout{}, r.badgeRect, container.NewCenter(r.badgeLabel))
+	// Badge: pill bg + border overlay + centered text
+	badge := container.New(&badgeLayout{},
+		r.badgeBg,
+		r.badgeBorder,
+		container.NewCenter(r.badgeLabel),
+	)
 
 	// Row 1: [icon + name]  [badge]
 	row1 := container.NewBorder(nil, nil, nil, badge, r.iconName)
@@ -289,12 +289,15 @@ func (r *ProgressRow) CreateRenderer() fyne.WidgetRenderer {
 	buttons := container.NewHBox(r.pauseBtn, r.openBtn, r.removeBtn)
 	row4 := container.NewBorder(nil, nil, r.hash, buttons)
 
+	// Divider above row 4
+	divider := canvas.NewRectangle(color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x0f})
+
 	// Card body
-	body := container.NewVBox(row1, row2, row3, r.errLabel, row4)
+	body := container.NewVBox(row1, row2, row3, r.errLabel, divider, row4)
 	padded := container.NewPadded(body)
 
-	// Outer: 5px left strip + padded card body
-	outer := container.New(&stripLayout{stripW: 5}, r.strip, padded)
+	// Outer: glass card bg + border overlay + padded body
+	outer := container.NewStack(r.cardBg, r.cardBorder, padded)
 
 	return widget.NewSimpleRenderer(outer)
 }
@@ -317,49 +320,6 @@ func (*badgeLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 
 func (*badgeLayout) MinSize(_ []fyne.CanvasObject) fyne.Size {
 	return fyne.NewSize(100, 24)
-}
-
-// stripLayout places the first child as a fixed-width left strip,
-// then fills the rest of the space with the second child.
-type stripLayout struct{ stripW float32 }
-
-func (l *stripLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
-	if len(objects) < 2 {
-		return
-	}
-	objects[0].Resize(fyne.NewSize(l.stripW, size.Height))
-	objects[0].Move(fyne.NewPos(0, 0))
-	objects[1].Resize(fyne.NewSize(size.Width-l.stripW, size.Height))
-	objects[1].Move(fyne.NewPos(l.stripW, 0))
-}
-
-func (l *stripLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
-	if len(objects) < 2 {
-		return fyne.NewSize(l.stripW, 0)
-	}
-	ms := objects[1].MinSize()
-	return fyne.NewSize(ms.Width+l.stripW, ms.Height)
-}
-
-// statusColor maps a Status to its indicator colour.
-func statusColor(s engine.Status) color.Color {
-	switch s {
-	case engine.StatusDownloading, engine.StatusConnecting:
-		return color.NRGBA{R: 0x4d, G: 0x9f, B: 0xff, A: 0xff} // #4d9fff
-	case engine.StatusComplete:
-		return color.NRGBA{R: 0x00, G: 0xe6, B: 0x76, A: 0xff} // #00e676
-	case engine.StatusError:
-		return color.NRGBA{R: 0xff, G: 0x53, B: 0x70, A: 0xff} // #ff5370
-	case engine.StatusVerifying:
-		return color.NRGBA{R: 0xff, G: 0xcb, B: 0x6b, A: 0xff} // #ffcb6b
-	default: // Queued, Paused
-		return color.NRGBA{R: 0x9e, G: 0x9e, B: 0x9e, A: 0xff} // grey
-	}
-}
-
-// badgeTextColor returns white or black for the badge text.
-func badgeTextColor(_ engine.Status) color.Color {
-	return color.White
 }
 
 // glassStatusColor returns the Apple-accent text color for a status badge.
