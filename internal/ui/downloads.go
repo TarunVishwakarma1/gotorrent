@@ -16,13 +16,15 @@ import (
 
 // downloadsScreen manages the downloads list view.
 type downloadsScreen struct {
-	mu     sync.Mutex
-	states []*engine.TorrentState
-	list   *widget.List
-	empty  fyne.CanvasObject
-	stack  *fyne.Container
-	gta    *GoTorrentApp
-	win    fyne.Window
+	mu            sync.Mutex
+	states        []*engine.TorrentState
+	list          *widget.List
+	empty         fyne.CanvasObject
+	stack         *fyne.Container
+	contentArea   *fyne.Container
+	subtitleLabel *widget.Label
+	gta           *GoTorrentApp
+	win           fyne.Window
 }
 
 // newDownloadsScreen constructs the downloads list screen.
@@ -33,6 +35,22 @@ func newDownloadsScreen(gta *GoTorrentApp, win fyne.Window) (*downloadsScreen, f
 	ds.empty = buildEmptyState(func() {
 		openTorrentFilePicker(gta, win)
 	})
+
+	// Header row
+	titleLabel := widget.NewLabel("Downloads")
+	titleLabel.TextStyle = fyne.TextStyle{Bold: true}
+
+	ds.subtitleLabel = widget.NewLabel("0 torrents · 0 active")
+
+	addBtn := widget.NewButton("+ Add Torrent", func() {
+		openTorrentFilePicker(gta, win)
+	})
+	addBtn.Importance = widget.HighImportance
+
+	header := container.NewBorder(
+		nil, nil, nil, addBtn,
+		container.NewVBox(titleLabel, ds.subtitleLabel),
+	)
 
 	ds.list = widget.NewList(
 		func() int {
@@ -60,7 +78,8 @@ func newDownloadsScreen(gta *GoTorrentApp, win fyne.Window) (*downloadsScreen, f
 		},
 	)
 
-	ds.stack = container.NewStack(ds.empty)
+	ds.contentArea = container.NewStack(ds.empty)
+	ds.stack = container.NewBorder(header, nil, nil, nil, ds.contentArea)
 
 	// Load initial state from manager.
 	initial := gta.Manager.GetAll()
@@ -104,6 +123,19 @@ func (ds *downloadsScreen) onStateUpdate(state *engine.TorrentState) {
 	}
 	ds.mu.Unlock()
 	ds.refreshView()
+	// Recompute subtitle
+	ds.mu.Lock()
+	active := 0
+	for _, s := range ds.states {
+		if s.Status == engine.StatusDownloading {
+			active++
+		}
+	}
+	total := len(ds.states)
+	ds.mu.Unlock()
+	if ds.subtitleLabel != nil {
+		ds.subtitleLabel.SetText(fmt.Sprintf("%d torrents · %d active", total, active))
+	}
 }
 
 // updateStates replaces the state list wholesale.
@@ -112,20 +144,33 @@ func (ds *downloadsScreen) updateStates(states []*engine.TorrentState) {
 	ds.states = states
 	ds.mu.Unlock()
 	ds.refreshView()
+	// Update subtitle
+	ds.mu.Lock()
+	active := 0
+	for _, s := range ds.states {
+		if s.Status == engine.StatusDownloading {
+			active++
+		}
+	}
+	total := len(ds.states)
+	ds.mu.Unlock()
+	if ds.subtitleLabel != nil {
+		ds.subtitleLabel.SetText(fmt.Sprintf("%d torrents · %d active", total, active))
+	}
 }
 
-// refreshView updates the stack to show either the list or the empty state.
+// refreshView updates the content area to show either the list or the empty state.
 func (ds *downloadsScreen) refreshView() {
 	ds.mu.Lock()
 	n := len(ds.states)
 	ds.mu.Unlock()
 
 	if n == 0 {
-		ds.stack.Objects = []fyne.CanvasObject{ds.empty}
+		ds.contentArea.Objects = []fyne.CanvasObject{ds.empty}
 	} else {
-		ds.stack.Objects = []fyne.CanvasObject{ds.list}
+		ds.contentArea.Objects = []fyne.CanvasObject{ds.list}
 	}
-	ds.stack.Refresh()
+	ds.contentArea.Refresh()
 	ds.list.Refresh()
 }
 
