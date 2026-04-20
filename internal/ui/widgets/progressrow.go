@@ -329,13 +329,13 @@ func (l *stripLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 func statusColor(s engine.Status) color.Color {
 	switch s {
 	case engine.StatusDownloading, engine.StatusConnecting:
-		return color.NRGBA{R: 0x21, G: 0x96, B: 0xF3, A: 0xff} // blue
+		return color.NRGBA{R: 0x4d, G: 0x9f, B: 0xff, A: 0xff} // #4d9fff
 	case engine.StatusComplete:
-		return color.NRGBA{R: 0x4c, G: 0xaf, B: 0x50, A: 0xff} // green
+		return color.NRGBA{R: 0x00, G: 0xe6, B: 0x76, A: 0xff} // #00e676
 	case engine.StatusError:
-		return color.NRGBA{R: 0xf4, G: 0x43, B: 0x36, A: 0xff} // red
+		return color.NRGBA{R: 0xff, G: 0x53, B: 0x70, A: 0xff} // #ff5370
 	case engine.StatusVerifying:
-		return color.NRGBA{R: 0xff, G: 0x98, B: 0x00, A: 0xff} // orange
+		return color.NRGBA{R: 0xff, G: 0xcb, B: 0x6b, A: 0xff} // #ffcb6b
 	default: // Queued, Paused
 		return color.NRGBA{R: 0x9e, G: 0x9e, B: 0x9e, A: 0xff} // grey
 	}
