@@ -77,8 +77,12 @@ jobs:
           mkdir -p dmg_staging
           cp -R GoTorrent.app dmg_staging/
           ln -sf /Applications dmg_staging/Applications
-          hdiutil create -volname "GoTorrent" -srcfolder dmg_staging \
-            -ov -format UDZO "gotorrent-${VERSION}-mac.dmg"
+          sync
+          sleep 3
+          # macOS CI environments often throw "Resource busy" due to Spotlight indexers locking the staging dir.
+          # We retry the command once after waiting if it hits a lock.
+          hdiutil create -volname "GoTorrent" -srcfolder dmg_staging -ov -format UDZO "gotorrent-${VERSION}-mac.dmg" || \
+            (sleep 5 && hdiutil create -volname "GoTorrent" -srcfolder dmg_staging -ov -format UDZO "gotorrent-${VERSION}-mac.dmg")
           rm -rf dmg_staging
 
       # ================================================================
