@@ -10,11 +10,11 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/tarunvishwakarma1/gotorrent/internal/engine"
+	"github.com/tarunvishwakarma1/gotorrent/internal/ui/widgets"
 )
 
 // screenID identifies which screen is currently visible.
@@ -34,9 +34,6 @@ type MainWindow struct {
 	content   *fyne.Container
 	downloads *downloadsScreen
 	currentID screenID
-
-	navBtns   [4]*widget.Button
-	statusDot *widget.Label // ● indicator at sidebar bottom, updated by status ticker
 }
 
 // newMainWindow creates and configures the main application window.
@@ -61,13 +58,10 @@ func newMainWindow(gta *GoTorrentApp) *MainWindow {
 	// Pre-build the content area with the downloads screen.
 	mw.content.Objects = []fyne.CanvasObject{downloadsContent}
 
-	sidebar := mw.buildSidebar()
+	topBar := mw.buildTopBar()
 	statusBar := mw.buildStatusBar()
 
-	split := container.NewHSplit(sidebar, mw.content)
-	split.SetOffset(0.07)
-
-	root := container.NewBorder(nil, statusBar, nil, nil, split)
+	root := container.NewBorder(topBar, statusBar, nil, nil, mw.content)
 	mw.win.SetContent(root)
 
 	// Keyboard shortcuts.
@@ -90,115 +84,88 @@ func newMainWindow(gta *GoTorrentApp) *MainWindow {
 	return mw
 }
 
-// buildSidebar creates the glass navigation panel.
-func (mw *MainWindow) buildSidebar() fyne.CanvasObject {
-	// Glass background panel
-	bg := canvas.NewRectangle(color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x12})
-	bg.CornerRadius = 18
-	bg.StrokeColor = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x1a}
-	bg.StrokeWidth = 1
+// buildTopBar creates the top toolbar area to match the mockup.
+func (mw *MainWindow) buildTopBar() fyne.CanvasObject {
+	bg := canvas.NewRectangle(color.NRGBA{R: 0x0d, G: 0x15, B: 0x20, A: 0xff})
 
-	// Logo badge: blue circle
-	logoBg := canvas.NewRectangle(color.NRGBA{R: 0x0a, G: 0x84, B: 0xff, A: 0xff})
-	logoBg.CornerRadius = 12
-	logoText := canvas.NewText("⬇", color.White)
-	logoText.TextSize = 18
-	logoText.TextStyle = fyne.TextStyle{Bold: true}
-	logo := container.NewStack(
-		container.New(&fixedSizeLayout{w: 36, h: 36}, logoBg),
-		container.NewCenter(logoText),
-	)
-
-	// Nav buttons — icon only
-	mw.navBtns[screenDownloads] = widget.NewButtonWithIcon("", theme.DownloadIcon(), func() {
-		mw.showDownloads()
+	addBtn := widgets.NewAnimatedPrimaryButton("Add Torrent", theme.ContentAddIcon(), func() {
+		openTorrentFilePicker(mw.gta, mw.win)
 	})
-	mw.navBtns[screenAddTorrent] = widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
-		mw.showScreen(screenAddTorrent, addTorrentScreen(mw.gta, mw.win))
+
+	pauseAllBtn := widget.NewButtonWithIcon("Pause All", theme.MediaPauseIcon(), func() {
+		for _, s := range mw.gta.Manager.GetAll() {
+			if s.Status == engine.StatusDownloading || s.Status == engine.StatusConnecting {
+				_ = mw.gta.Manager.Pause(s.ID)
+			}
+		}
 	})
-	mw.navBtns[screenSettings] = widget.NewButtonWithIcon("", theme.SettingsIcon(), func() {
-		mw.showScreen(screenSettings, settingsScreen(mw.gta, mw.win))
-	})
-	mw.navBtns[screenAbout] = widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
-		mw.showScreen(screenAbout, aboutScreen(mw.gta))
-	})
-	for _, btn := range mw.navBtns {
-		btn.Alignment = widget.ButtonAlignCenter
-	}
 
-	// Status dot: glow effect with two stacked rectangles
-	dotGlow := canvas.NewRectangle(color.NRGBA{R: 0x30, G: 0xd1, B: 0x58, A: 0x55})
-	dotGlow.CornerRadius = 6
-	dotSolid := canvas.NewRectangle(color.NRGBA{R: 0x30, G: 0xd1, B: 0x58, A: 0xff})
-	dotSolid.CornerRadius = 4
-	statusDotCanvas := container.NewStack(
-		container.New(&fixedSizeLayout{w: 12, h: 12}, dotGlow),
-		container.New(&fixedSizeLayout{w: 8, h: 8}, dotSolid),
-	)
-	// Keep widget.Label hidden for status ticker compatibility
-	mw.statusDot = widget.NewLabel("")
-	mw.statusDot.Hide()
-
-	nav := container.NewVBox(
-		container.NewCenter(logo),
-		widget.NewSeparator(),
-		container.NewCenter(mw.navBtns[screenDownloads]),
-		container.NewCenter(mw.navBtns[screenAddTorrent]),
-		widget.NewSeparator(),
-		container.NewCenter(mw.navBtns[screenSettings]),
-		container.NewCenter(mw.navBtns[screenAbout]),
-		layout.NewSpacer(),
-		container.NewCenter(statusDotCanvas),
-		widget.NewLabel(""), // bottom padding
-	)
-
-	return container.NewStack(bg, nav)
-}
-
-// buildStatusBar creates the bottom glass status bar.
-func (mw *MainWindow) buildStatusBar() fyne.CanvasObject {
-	barBg := canvas.NewRectangle(color.NRGBA{R: 0x00, G: 0x00, B: 0x00, A: 0x4c})
-
-	versionLabel := widget.NewLabel("GoTorrent v" + appVersion)
-
-	speedLabel := widget.NewLabel("↓ 0 B/s")
-	countLabel := widget.NewLabel("Idle")
+	// Speed labels on the right
+	downSpeed := widgets.StyledText("↓ 0 MB/s", 12, widgets.ColorNeonCyan, true, true)
+	upSpeed := widgets.StyledText("↑ 0 MB/s", 12, widgets.ColorNeonGreen, true, true)
 
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			var totalSpeed float64
-			var active, total int
+			var totalDown float64
 			for _, s := range mw.gta.Manager.GetAll() {
-				total++
 				if s.Status == engine.StatusDownloading {
-					active++
-					totalSpeed += s.Speed
+					totalDown += s.Speed
 				}
 			}
-			speedLabel.SetText("↓ " + formatBytes(totalSpeed) + "/s")
-			if active > 0 {
-				countLabel.SetText(fmt.Sprintf("%d/%d active", active, total))
-			} else if total > 0 {
-				countLabel.SetText(fmt.Sprintf("%d torrents", total))
-			} else {
-				countLabel.SetText("Idle")
-			}
-			if mw.statusDot != nil {
-				if active > 0 {
-					mw.statusDot.SetText("🟢")
-				} else {
-					mw.statusDot.SetText("⚫")
-				}
-			}
+			downSpeed.Text = fmt.Sprintf("↓ %s/s", widgets.FormatBytes(totalDown))
+			downSpeed.Refresh()
 		}
 	}()
 
-	right := container.NewHBox(speedLabel, widget.NewSeparator(), countLabel)
-	bar := container.NewBorder(nil, nil, versionLabel, right)
+	left := container.NewHBox(addBtn, pauseAllBtn)
+	right := container.NewHBox(downSpeed, upSpeed)
 
-	return container.NewStack(barBg, bar)
+	bar := container.NewBorder(nil, nil, left, right)
+	padded := container.NewPadded(bar)
+
+	// A subtle bottom border
+	border := canvas.NewRectangle(color.Transparent)
+	border.StrokeColor = widgets.ColorGlassBorder
+	border.StrokeWidth = 1
+
+	return container.NewStack(bg, border, padded)
+}
+
+// buildStatusBar creates the bottom minimally-styled status bar.
+func (mw *MainWindow) buildStatusBar() fyne.CanvasObject {
+	barBg := canvas.NewRectangle(color.NRGBA{R: 0x0a, G: 0x0f, B: 0x1a, A: 0xff})
+
+	countLabel := widget.NewLabel("0 downloading · 0 total")
+	downloadedLabel := widget.NewLabel("Downloaded: 0 GB")
+
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			var active, total int
+			var totalDownloaded int64
+			for _, s := range mw.gta.Manager.GetAll() {
+				total++
+				if s.Status == engine.StatusDownloading || s.Status == engine.StatusConnecting {
+					active++
+				}
+				totalDownloaded += s.Downloaded
+			}
+			countLabel.SetText(fmt.Sprintf("%d downloading · %d total", active, total))
+			downloadedLabel.SetText(fmt.Sprintf("Downloaded: %s", formatBytes(float64(totalDownloaded))))
+		}
+	}()
+
+	topBorder := canvas.NewRectangle(color.Transparent)
+	topBorder.StrokeColor = color.NRGBA{R: 0x00, G: 0xd4, B: 0xff, A: 0x15}
+	topBorder.StrokeWidth = 1
+
+	bar := container.NewBorder(nil, nil, countLabel, downloadedLabel)
+	padded := container.NewPadded(bar)
+
+	return container.NewStack(barBg, topBorder, padded)
 }
 
 // registerShortcuts adds keyboard shortcuts to the window canvas.
@@ -235,17 +202,9 @@ func (mw *MainWindow) showScreen(id screenID, content fyne.CanvasObject) {
 	mw.content.Refresh()
 }
 
-// selectNav highlights the active nav button.
+// selectNav switches the navigation state. (Kept for compatibility with other screens)
 func (mw *MainWindow) selectNav(id screenID) {
 	mw.currentID = id
-	for i, btn := range mw.navBtns {
-		if screenID(i) == id {
-			btn.Importance = widget.HighImportance
-		} else {
-			btn.Importance = widget.LowImportance
-		}
-		btn.Refresh()
-	}
 	if id == screenDownloads {
 		allStates := mw.gta.Manager.GetAll()
 		mw.downloads.updateStates(allStates)

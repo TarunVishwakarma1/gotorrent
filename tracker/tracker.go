@@ -1,7 +1,6 @@
 package tracker
 
 import (
-	"crypto/rand"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,24 +12,20 @@ import (
 )
 
 func GetPeers(tf *torrent.TorrentFile) (string, error) {
-	var peerId [20]byte
 	base, err := url.Parse(tf.Announce)
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse announce URL")
 	}
-	_, err = rand.Read(peerId[:])
-	if err != nil {
-		return "", fmt.Errorf("failed to generate peer id: %w", err)
-	}
 
 	params := url.Values{
 		"info_hash":  []string{string(tf.InfoHash[:])},
-		"peer_id":    []string{string(peerId[:])},
+		"peer_id":    []string{string(tf.PeerID[:])},
 		"port":       []string{strconv.Itoa(int(tf.Port))},
 		"uploaded":   []string{"0"},
 		"downloaded": []string{"0"},
 		"left":       []string{strconv.Itoa(tf.Length)},
 		"compact":    []string{"1"},
+		"numwant":    []string{"100"},
 	}
 
 	base.RawQuery = params.Encode()

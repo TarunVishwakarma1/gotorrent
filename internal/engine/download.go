@@ -55,6 +55,13 @@ func RunDownload(ctx context.Context, state *TorrentState, cb ProgressCallback) 
 			cb(downloaded, speed, numPeers)
 		}
 	}
+	t.DiscoverPeers = func() ([]peers.Peer, error) {
+		raw, err := tracker.GetPeers(tf)
+		if err != nil {
+			return nil, err
+		}
+		return peers.Decode(raw)
+	}
 
 	// 6. Execute download.
 	if tf.IsMultiFile {

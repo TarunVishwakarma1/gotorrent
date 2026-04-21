@@ -22,7 +22,6 @@ type downloadsScreen struct {
 	empty         fyne.CanvasObject
 	stack         *fyne.Container
 	contentArea   *fyne.Container
-	subtitleLabel *widget.Label
 	gta           *GoTorrentApp
 	win           fyne.Window
 }
@@ -36,21 +35,7 @@ func newDownloadsScreen(gta *GoTorrentApp, win fyne.Window) (*downloadsScreen, f
 		openTorrentFilePicker(gta, win)
 	})
 
-	// Header row
-	titleLabel := widget.NewLabel("Downloads")
-	titleLabel.TextStyle = fyne.TextStyle{Bold: true}
-
-	ds.subtitleLabel = widget.NewLabel("0 torrents · 0 active")
-
-	addBtn := widget.NewButton("+ Add Torrent", func() {
-		openTorrentFilePicker(gta, win)
-	})
-	addBtn.Importance = widget.HighImportance
-
-	header := container.NewBorder(
-		nil, nil, nil, addBtn,
-		container.NewVBox(titleLabel, ds.subtitleLabel),
-	)
+	// No local header needed; handled by global toolbar
 
 	ds.list = widget.NewList(
 		func() int {
@@ -79,7 +64,7 @@ func newDownloadsScreen(gta *GoTorrentApp, win fyne.Window) (*downloadsScreen, f
 	)
 
 	ds.contentArea = container.NewStack(ds.empty)
-	ds.stack = container.NewBorder(header, nil, nil, nil, ds.contentArea)
+	ds.stack = container.NewBorder(nil, nil, nil, nil, ds.contentArea)
 
 	// Load initial state from manager.
 	initial := gta.Manager.GetAll()
@@ -123,19 +108,6 @@ func (ds *downloadsScreen) onStateUpdate(state *engine.TorrentState) {
 	}
 	ds.mu.Unlock()
 	ds.refreshView()
-	// Recompute subtitle
-	ds.mu.Lock()
-	active := 0
-	for _, s := range ds.states {
-		if s.Status == engine.StatusDownloading {
-			active++
-		}
-	}
-	total := len(ds.states)
-	ds.mu.Unlock()
-	if ds.subtitleLabel != nil {
-		ds.subtitleLabel.SetText(fmt.Sprintf("%d torrents · %d active", total, active))
-	}
 }
 
 // updateStates replaces the state list wholesale.
@@ -144,19 +116,6 @@ func (ds *downloadsScreen) updateStates(states []*engine.TorrentState) {
 	ds.states = states
 	ds.mu.Unlock()
 	ds.refreshView()
-	// Update subtitle
-	ds.mu.Lock()
-	active := 0
-	for _, s := range ds.states {
-		if s.Status == engine.StatusDownloading {
-			active++
-		}
-	}
-	total := len(ds.states)
-	ds.mu.Unlock()
-	if ds.subtitleLabel != nil {
-		ds.subtitleLabel.SetText(fmt.Sprintf("%d torrents · %d active", total, active))
-	}
 }
 
 // refreshView updates the content area to show either the list or the empty state.

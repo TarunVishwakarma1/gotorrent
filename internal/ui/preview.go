@@ -2,12 +2,14 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/tarunvishwakarma1/gotorrent/internal/engine"
@@ -34,20 +36,29 @@ func showPreviewDialog(gta *GoTorrentApp, torrentPath string, win fyne.Window) {
 	savePath := cfg.SavePath
 
 	// --- Header info ---
-	nameLabel := widget.NewLabel(fmt.Sprintf("🗂  %s", tf.Name))
-	nameLabel.TextStyle = fyne.TextStyle{Bold: true}
-
+	nameLabel := widgets.StyledText(fmt.Sprintf("🗂  %s", tf.Name), 16, color.White, true, false)
+	
 	totalSize := int64(tf.Length)
 	numPieces := len(tf.PieceHashes)
 	pieceSizeKB := tf.PieceLength / 1024
 
 	infoGrid := container.NewGridWithColumns(4,
-		widget.NewLabel("Size:"), widget.NewLabel(formatBytes(float64(totalSize))),
-		widget.NewLabel("Pieces:"), widget.NewLabel(fmt.Sprintf("%d", numPieces)),
-		widget.NewLabel("Piece size:"), widget.NewLabel(fmt.Sprintf("%d KB", pieceSizeKB)),
-		widget.NewLabel("Tracker:"), widget.NewLabel(truncate(tf.Announce, 30)),
-		widget.NewLabel("InfoHash:"), widget.NewLabel(truncate(fmt.Sprintf("%x", tf.InfoHash), 32)),
+		widgets.StyledText("Size:", 12, widgets.ColorGreyText, false, false), 
+		widgets.StyledText(widgets.FormatBytes(float64(totalSize)), 13, widgets.ColorNeonCyan, true, true),
+		
+		widgets.StyledText("Pieces:", 12, widgets.ColorGreyText, false, false), 
+		widgets.StyledText(fmt.Sprintf("%d", numPieces), 13, color.White, true, true),
+		
+		widgets.StyledText("Piece size:", 12, widgets.ColorGreyText, false, false), 
+		widgets.StyledText(fmt.Sprintf("%d KB", pieceSizeKB), 13, color.White, true, true),
+		
+		widgets.StyledText("Tracker:", 12, widgets.ColorGreyText, false, false), 
+		widgets.StyledText(truncate(tf.Announce, 30), 12, color.White, false, false),
+		
+		widgets.StyledText("InfoHash:", 12, widgets.ColorGreyText, false, false), 
+		widgets.StyledText(truncate(fmt.Sprintf("%x", tf.InfoHash), 32), 11, widgets.ColorGreyText, false, true),
 	)
+	glassInfo := widgets.NewGlassPanel(infoGrid)
 
 	// --- File tree ---
 	files := make([]engine.FileState, 0)
@@ -73,8 +84,7 @@ func showPreviewDialog(gta *GoTorrentApp, torrentPath string, win fyne.Window) {
 		})
 	}
 
-	// selectedSizeLabel shows updated selection summary
-	selectedSizeLabel := widget.NewLabel("")
+	selectedSizeLabel := widgets.StyledText("", 12, widgets.ColorNeonCyan, true, true)
 	updateSelectedSize := func() {
 		var sel int64
 		for _, f := range files {
@@ -82,34 +92,36 @@ func showPreviewDialog(gta *GoTorrentApp, torrentPath string, win fyne.Window) {
 				sel += f.Length
 			}
 		}
-		selectedSizeLabel.SetText(fmt.Sprintf("Selected: %s / %s",
-			formatBytes(float64(sel)), formatBytes(float64(totalSize))))
+		selectedSizeLabel.Text = fmt.Sprintf("Selected: %s / %s",
+			widgets.FormatBytes(float64(sel)), widgets.FormatBytes(float64(totalSize)))
+		selectedSizeLabel.Refresh()
 	}
 	updateSelectedSize()
 
 	fileTree := widgets.NewFileTree(files, updateSelectedSize)
 
-	selectAllBtn := widget.NewButton("☑ Select All", func() {
+	selectAllBtn := widget.NewButton("Select All", func() {
 		fileTree.SelectAll(true)
 		updateSelectedSize()
 	})
-	selectNoneBtn := widget.NewButton("☐ Select None", func() {
+	selectNoneBtn := widget.NewButton("Select None", func() {
 		fileTree.SelectAll(false)
 		updateSelectedSize()
 	})
 	selectRow := container.NewHBox(selectAllBtn, selectNoneBtn)
 
 	filesSection := container.NewBorder(
-		container.NewBorder(nil, nil, sectionLabel("Files"), selectRow),
-		selectedSizeLabel,
+		container.NewBorder(nil, nil, widgets.StyledText("Files Included", 13, color.White, true, false), selectRow),
+		container.NewPadded(selectedSizeLabel),
 		nil, nil,
 		fileTree,
 	)
+	glassTree := widgets.NewGlassPanel(filesSection)
 
 	// --- Save path ---
 	savePathEntry := widget.NewEntry()
 	savePathEntry.SetText(savePath)
-	savePathBrowse := widget.NewButton("📁", func() {
+	savePathBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
 			if err != nil || uri == nil {
 				return
@@ -119,7 +131,7 @@ func showPreviewDialog(gta *GoTorrentApp, torrentPath string, win fyne.Window) {
 	})
 	savePathRow := container.NewBorder(
 		nil, nil,
-		widget.NewLabel("Save to:"),
+		widgets.StyledText("Save to:", 12, widgets.ColorGreyText, false, false),
 		savePathBrowse,
 		savePathEntry,
 	)
@@ -130,7 +142,8 @@ func showPreviewDialog(gta *GoTorrentApp, torrentPath string, win fyne.Window) {
 	cancelBtn := widget.NewButton("Cancel", func() {
 		previewDialog.Hide()
 	})
-	startBtn := widget.NewButton("▶ Start Download", func() {
+	
+	startBtn := widgets.NewAnimatedPrimaryButton("Start Download", theme.MediaPlayIcon(), func() {
 		dest := savePathEntry.Text
 		if dest == "" {
 			dest = cfg.SavePath
@@ -144,12 +157,10 @@ func showPreviewDialog(gta *GoTorrentApp, torrentPath string, win fyne.Window) {
 			dialog.ShowError(err, win)
 			return
 		}
-		// Switch to downloads screen
 		if gta.window != nil {
 			gta.window.showDownloads()
 		}
 	})
-	startBtn.Importance = widget.HighImportance
 
 	footer := container.NewBorder(nil, nil, nil,
 		container.NewHBox(cancelBtn, startBtn),
@@ -157,17 +168,15 @@ func showPreviewDialog(gta *GoTorrentApp, torrentPath string, win fyne.Window) {
 	)
 
 	content := container.NewVBox(
-		nameLabel,
-		widget.NewSeparator(),
-		infoGrid,
-		widget.NewSeparator(),
-		filesSection,
-		widget.NewSeparator(),
-		footer,
+		container.NewPadded(nameLabel),
+		glassInfo,
+		glassTree,
+		container.NewPadded(footer),
 	)
 
-	previewDialog = dialog.NewCustom("Torrent Preview", "Close", content, win)
-	previewDialog.Resize(fyne.NewSize(700, 600))
+	previewDialog = dialog.NewCustom("", "Close", content, win)
+	// Make it more compact & dense "Apple Style"
+	previewDialog.Resize(fyne.NewSize(650, 480))
 	previewDialog.Show()
 }
 

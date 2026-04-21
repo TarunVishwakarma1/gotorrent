@@ -137,7 +137,7 @@ func newFileTreeRow(item *FileTreeItem) *fileTreeRow {
 
 	icon := engine.FileIconForName(filepath.Base(name))
 	label := fmt.Sprintf("%s %s", icon, name)
-	size := formatBytes(float64(item.State.Length))
+	size := FormatBytes(float64(item.State.Length))
 
 	r.check = widget.NewCheck(label, func(checked bool) {
 		if item.OnToggle != nil {

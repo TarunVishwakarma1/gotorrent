@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -63,6 +64,8 @@ type Torrent struct {
 	Ctx context.Context
 	// ProgressFunc is called every second with download progress. May be nil.
 	ProgressFunc ProgressFunc
+	// DiscoverPeers is called whenever active peers drop below 40.
+	DiscoverPeers func() ([]peers.Peer, error)
 }
 
 // calculatePieceSize returns the size of a specific piece
@@ -138,11 +141,11 @@ func attemptDownloadPiece(c *client.Client, pw *pieceWork) ([]byte, error) {
 		buf:   make([]byte, pw.length),
 	}
 
-	// 20 second deadline — tighter than before; slow peers get dropped faster
-	c.Conn.SetDeadline(time.Now().Add(20 * time.Second))
 	defer c.Conn.SetDeadline(time.Time{}) // clear deadline when done
 
 	for state.downloaded < pw.length {
+		// 30-second idle deadline per block received; avoids dropping slow but valid connections.
+		c.Conn.SetDeadline(time.Now().Add(30 * time.Second))
 		// if unchoked, fill up the pipeline with requests
 		if !c.Choked {
 			for state.backlog < MaxBacklog && state.requested < pw.length {
@@ -274,13 +277,86 @@ func (t *Torrent) downloadToBuffer(ctx context.Context) ([]byte, error) {
 
 	// Atomic connected-peer counter — workers increment/decrement around their lifecycle.
 	var activePeers int64
-	for _, peer := range t.Peers {
-		go func(p peers.Peer) {
-			atomic.AddInt64(&activePeers, 1)
-			defer atomic.AddInt64(&activePeers, -1)
-			t.startDownloadWorker(ctx, p, workQueue, results)
-		}(peer)
+	peerChan := make(chan peers.Peer, 500)
+	var seenMu sync.Mutex
+	peerLastSeen := make(map[string]time.Time)
+
+	addPeers := func(list []peers.Peer) {
+		seenMu.Lock()
+		defer seenMu.Unlock()
+		now := time.Now()
+		for _, p := range list {
+			addr := p.String()
+			if time.Since(peerLastSeen[addr]) > 30*time.Second {
+				peerLastSeen[addr] = now
+				select {
+				case peerChan <- p:
+				default:
+				}
+			}
+		}
 	}
+
+	addPeers(t.Peers) // Initial set of peers
+
+	// Event channel used to instantly trigger tracker lookups when peers drop.
+	peerNeedEvent := make(chan struct{}, 1)
+	triggerDiscovery := func() {
+		select {
+		case peerNeedEvent <- struct{}{}:
+		default: // already triggered
+		}
+	}
+
+	// Optional dynamic discovery loop.
+	if t.DiscoverPeers != nil {
+		go func() {
+			// Instant event-driven recovery loop. We use a short 2-second rate-limit
+			// cooldown to prevent hammering HTTP trackers if no new peers exist on the swarms.
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-peerNeedEvent:
+					if atomic.LoadInt64(&activePeers) < 40 {
+						log.Printf("[P2P] Instantly recovering peer pool (currently %d)...\n", atomic.LoadInt64(&activePeers))
+						newPeers, err := t.DiscoverPeers()
+						if err == nil && len(newPeers) > 0 {
+							addPeers(newPeers)
+						} else if err != nil {
+							log.Printf("[P2P] Peer discovery failed: %v\n", err)
+						}
+						time.Sleep(2 * time.Second) // rate-limit tracker HTTP calls
+					}
+				}
+			}
+		}()
+	}
+
+	// Bootstrap checking immediately
+	if len(t.Peers) < 40 {
+		triggerDiscovery()
+	}
+
+	// Peer connection dispatcher.
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case p := <-peerChan:
+				go func(peer peers.Peer) {
+					atomic.AddInt64(&activePeers, 1)
+					defer func() {
+						if atomic.AddInt64(&activePeers, -1) < 40 {
+							triggerDiscovery()
+						}
+					}()
+					t.startDownloadWorker(ctx, peer, workQueue, results)
+				}(p)
+			}
+		}
+	}()
 
 	buf := make([]byte, t.Length)
 	done := 0
